@@ -302,7 +302,7 @@ public:
         return travelTime;
     }
 
-        void getSigmaCoefficients(char stability_class, Vector XY){
+    void getSigmaCoefficients(char stability_class, Vector XY){
         XY = XY.array() * 0.001; // convert to km
 
         for(int i = 0; i < XY.size(); i++){

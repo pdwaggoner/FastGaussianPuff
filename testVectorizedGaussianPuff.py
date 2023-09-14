@@ -22,7 +22,7 @@ import sys
 utility_dir = './'
 sys.path.insert(0, utility_dir)
 from utilities import wind_synthesizer, wrapper_run_puff_simulation, combine_subexperiments
-# from GaussianPuff import GAUSSIANPUFF
+from GaussianPuff import GAUSSIANPUFF
 bin_dir = './bin'
 sys.path.insert(0, bin_dir)
 from vectorizedGaussianPuff import vectorizedGAUSSIANPUFF
@@ -37,16 +37,22 @@ simulation_data_dir = './puff_results/'
 plot_save_dir = './puff_plots/'
 
 # 1-minute-resolution cm data
-df_ch4_1min = pd.read_pickle(data_dir + 'df_ch4_1min_METEC_ADET.pkl') 
-df_ws_1min = pd.read_pickle(data_dir + 'df_ws_1min_METEC_ADET.pkl') 
-df_wd_1min = pd.read_pickle(data_dir + 'df_wd_1min_METEC_ADET.pkl') 
+df_ch4_1min = pd.read_csv(data_dir + 'df_ch4_1min_METEC_ADET.csv',) 
+df_ws_1min = pd.read_csv(data_dir + 'df_ws_1min_METEC_ADET.csv') 
+df_wd_1min = pd.read_csv(data_dir + 'df_wd_1min_METEC_ADET.csv')
+df_ch4_1min['time_stamp.mountain'] = pd.to_datetime(df_ch4_1min['time_stamp.mountain'])
+df_ws_1min['time_stamp.mountain'] = pd.to_datetime(df_ws_1min['time_stamp.mountain'])
+df_wd_1min['time_stamp.mountain'] = pd.to_datetime(df_wd_1min['time_stamp.mountain'])
+
 
 # experiment data
-df_experiment = pd.read_pickle(data_dir + 'df_exp_METEC_ADET.pkl')
+df_experiment = pd.read_csv(data_dir + 'df_exp_METEC_ADET.csv')
+df_experiment['start_time.mountain'] = pd.to_datetime(df_experiment['start_time.mountain'])
+df_experiment['end_time.mountain'] = pd.to_datetime(df_experiment['end_time.mountain'])
 
 # location data
-df_source_locs = pd.read_pickle(data_dir + 'df_source_locs_METEC_ADET.pkl')
-df_sensor_locs = pd.read_pickle(data_dir + 'df_sensor_locs_METEC_ADET.pkl')
+df_source_locs = pd.read_csv(data_dir + 'df_source_locs_METEC_ADET.csv')
+df_sensor_locs = pd.read_csv(data_dir + 'df_sensor_locs_METEC_ADET.csv')
 
 #%% Data processing
 # Data processing
@@ -80,121 +86,150 @@ else:
 # select experiments
 
 # source: 4T-11
-exp_start_time = '2022-02-22 01:33:22'
-exp_end_time = '2022-02-22 03:33:23'
+start_1 = '2022-02-22 01:33:22'
+end_1 = '2022-02-22 03:33:23'
 
 # source: 5S-27
-# exp_start_time = '2022-02-26 21:36:00'
-# exp_end_time = '2022-02-26 23:07:00'
+start_2 = '2022-02-26 21:36:00'
+end_2 = '2022-02-26 23:07:00'
 
 # source: 4W-47
-# exp_start_time = '2022-04-27 03:48:00'
-# exp_end_time = '2022-04-27 08:05:00'
+start_3 = '2022-04-27 03:48:00'
+end_3 = '2022-04-27 08:05:00'
 
+starts = [start_1, start_2, start_3]
+ends = [end_1, end_2, end_3]
 
-df_experiment_sub = \
-df_experiment.loc[(df_experiment['start_time.mountain']>= pd.to_datetime(exp_start_time)) &
-                (df_experiment['start_time.mountain']<= pd.to_datetime(exp_end_time))].reset_index(drop = True)
+num_tests = len(starts)
+tests_passed = 0
+tests_failed = 0
+failed_tests = []
 
-# set simulation parameters
-obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
-parallel, n_core = True, 3
-quiet = False 
+for i in range(0, len(starts)):
 
-exp_run_start_time = datetime.datetime.now() # log run time
+    exp_start_time = starts[i]
+    exp_end_time = ends[i]
 
-# initialize result containers
-exp_id_list, puff_list = [], []
+    df_experiment_sub = \
+    df_experiment.loc[ ( df_experiment['start_time.mountain'] >= pd.to_datetime(exp_start_time) ) &
+                    ( df_experiment['start_time.mountain'] <= pd.to_datetime(exp_end_time) ) ].reset_index(drop = True)
 
-# initialize puffs corresponding to each experiment
-for index, row in df_experiment_sub.iterrows():
-    exp_id, source_name, t_0, t_end, emission_rate = row[[colnames['exp_id'],
-                                                        colnames['name'], 
-                                                        colnames['exp_t_0'],
-                                                        colnames['exp_t_end'],
-                                                        colnames['emission_rate']]]
-    
-    ## floor t_0 and t_end to the nearest minute
-    t_0 = t_0.floor('T')
-    t_end = t_end.floor('T')
-    
-    ## extract inputs to the puff model
-    idx_0 = pd.Index(time_stamp_wind).get_indexer([t_0], method='nearest')[0]
-    idx_end = pd.Index(time_stamp_wind).get_indexer([t_end], method='nearest')[0]
-    time_stamps = time_stamp_wind[idx_0 : idx_end+1]
-    source_names = [source_name] * len(time_stamps)
-    emission_rates = [emission_rate] * len(time_stamps)
-    wind_speeds = ws_syn[idx_0 : idx_end+1]
-    wind_directions = wd_syn[idx_0 : idx_end+1]
-    
-    ## initialize GAUSSIANPUFF class objects
-    # puff = GAUSSIANPUFF(time_stamps, 
-    #                     source_names, emission_rates, 
-    #                     wind_speeds, wind_directions,
-    #                     obs_dt, sim_dt, puff_dt, 
-    #                     df_sensor_locs, df_source_locs,
-    #                     quiet=False,
-    #                     model_id = index
-    #                     )
-    
-    x_num = 20
-    y_num = 20
-    z_num = 20
+    # set simulation parameters
+    obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
+    quiet = False 
 
-    vect_puff = vectorizedGAUSSIANPUFF(time_stamps, 
-                                       source_names, emission_rates, 
-                                       wind_speeds, wind_directions, 
-                                       obs_dt, sim_dt, puff_dt,
-                                       df_sensor_locs, df_source_locs,
-                                       using_sensors=False,
-                                       x_num=x_num, y_num=y_num, z_num=z_num,
-                                       quiet=False
-    )
+    exp_run_start_time = datetime.datetime.now() # log run time
 
-vect_start = time.time()
-ch4_vect = vect_puff.simulation()
-vect_end = time.time()
+    # initialize result containers
+    exp_id_list, puff_list = [], []
 
-vect_time = vect_end-vect_start
-print("runtime: ", vect_time)
-print(f"simulation length: {len(vect_puff.time_stamps)} minutes")
+    # initialize puffs corresponding to each experiment
+    for index, row in df_experiment_sub.iterrows():
+        exp_id, source_name, t_0, t_end, emission_rate = row[[colnames['exp_id'],
+                                                            colnames['name'], 
+                                                            colnames['exp_t_0'],
+                                                            colnames['exp_t_end'],
+                                                            colnames['emission_rate']]]
+        
+        ## floor t_0 and t_end to the nearest minute
+        t_0 = t_0.floor('T')
+        t_end = t_end.floor('T')
+        
+        ## extract inputs to the puff model
+        idx_0 = pd.Index(time_stamp_wind).get_indexer([t_0], method='nearest')[0]
+        idx_end = pd.Index(time_stamp_wind).get_indexer([t_end], method='nearest')[0]
+        time_stamps = time_stamp_wind[idx_0 : idx_end+1]
+        source_names = [source_name] * len(time_stamps)
+        emission_rates = [emission_rate] * len(time_stamps)
+        wind_speeds = ws_syn[idx_0 : idx_end+1]
+        wind_directions = wd_syn[idx_0 : idx_end+1]
+        
+        # initialize GAUSSIANPUFF class objects
+        puff = GAUSSIANPUFF(time_stamps, 
+                            source_names, emission_rates, 
+                            wind_speeds, wind_directions,
+                            obs_dt, sim_dt, puff_dt, 
+                            df_sensor_locs, df_source_locs,
+                            quiet=False,
+                            model_id = index
+                            )
+        
+        x_num = 10
+        y_num = 10
+        z_num = 10
 
-test_data_dir = "./data/test_data/"
-start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
+        vect_puff = vectorizedGAUSSIANPUFF(time_stamps, 
+                                        source_names, emission_rates, 
+                                        wind_speeds, wind_directions, 
+                                        obs_dt, sim_dt, puff_dt,
+                                        df_sensor_locs, df_source_locs,
+                                        using_sensors=False,
+                                        x_num=x_num, y_num=y_num, z_num=z_num,
+                                        quiet=False
+        )
 
-filename = test_data_dir + "ch4-n-" + str(vect_puff.N_points) + "-exp-" + start_time_str + ".npy"
+        N_points = vect_puff.N_points
+        puff.x_sensor = vect_puff.X.ravel()
+        puff.y_sensor = vect_puff.Y.ravel()
+        puff.z_sensor = vect_puff.Z.ravel()
+        puff.N_sensor = N_points
+        puff.ch4_sim = np.zeros((puff.N_t_sim, vect_puff.N_points))
+        puff.ch4_sim_res = np.zeros((puff.N_t_obs, vect_puff.N_points))
 
-ch4 = np.load(filename)
+        vect_start = time.time()
+        ch4_vect = vect_puff.simulation()
+        vect_end = time.time()
 
+        vect_time = vect_end-vect_start
+        print("new runtime: ", vect_time)
+        print(f"simulation length: {len(vect_puff.time_stamps)} minutes")
 
-passed = True
-tol = 10e-6 # float32 precision is what the code originally used, so this is slightly larger than that
-for t in range(0, len(ch4)):
+        puff_start = time.time()
+        ch4 = puff.simulation()
+        puff_end = time.time()
+        puff_time = puff_end-puff_start
 
-    if np.linalg.norm(ch4[t]) < 10e-3: # ppb measurements are so small we don't care about relative error
-        norm = abs(np.linalg.norm(ch4[t].ravel() - ch4_vect[t].ravel()))
-    else:
-        norm = abs(np.linalg.norm(ch4[t].ravel() - ch4_vect[t].ravel())) / (np.linalg.norm(ch4[t].ravel()) + tol)
+        print("old runtime: ", puff_end-puff_start)
 
-    if np.shape(ch4_vect[t]) != vect_puff.grid_dims:
-        print(f"ERROR: CH4 ARRAY AT TIME {t} IS WRONG SHAPE")
-        passed = False
+        # IF RUNNING TESTS FREQUENTLY: Save the array created using the original GP model using np.save
+        # and load it in using np.load (as below)
+        # test_data_dir = "./data/test_data/"
+        # start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
+        # filename = test_data_dir + "ch4-n-" + str(vect_puff.N_points) + "-exp-" + start_time_str + ".npy"
+        # ch4 = np.load(filename)
 
-    if np.isnan(norm):
-        print(f"ERROR: NAN present in vectorized ch4 array at time {t}")
-        passed = False
-    elif norm > tol: # doesn't work if there are NAN's, has to stay in the elif
-        print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
-        passed = False
-        print("TIME:", t)
-        # print(ch4[t])
-        # print(ch4_vect[t].ravel())
-        # print("norm:", np.linalg.norm(ch4[t]))
-        # print("vect_norm:", np.linalg.norm(ch4_vect[t]))
-        print("RELATIVE NORM", norm)
+        passed = True
+        tol = 10e-6 # float32 precision is what the code originally used, so this is slightly larger than that
+        for t in range(0, len(ch4)):
 
-if not passed:
-    print("Test failed")
-else:
-    print("Test passed")
-# %%
+            if np.linalg.norm(ch4[t]) < 10e-3: # ppb measurements are so small we don't care about relative error
+                norm = abs(np.linalg.norm(ch4[t].ravel() - ch4_vect[t].ravel()))
+            else:
+                norm = abs(np.linalg.norm(ch4[t].ravel() - ch4_vect[t].ravel())) / (np.linalg.norm(ch4[t].ravel()) + tol)
+
+            if np.shape(ch4_vect[t]) != vect_puff.grid_dims:
+                print(f"ERROR: CH4 ARRAY AT TIME {t} IS WRONG SHAPE")
+                tests_failed += 1
+
+            if np.isnan(norm):
+                print(f"ERROR: NAN present in vectorized ch4 array at time {t}")
+                tests_failed += 1
+            elif norm > tol: # doesn't work if there are NAN's, has to stay in the elif
+                print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
+                tests_failed += 1
+                print("TIME:", t)
+                print("RELATIVE NORM", norm)
+
+        if not passed:
+            print(f"Test {i+1} failed")
+
+        else:
+            print(f"Test {i+1} passed")
+            tests_passed += 1
+        # %%
+
+    print("NUMER OF TESTS:", num_tests)
+    print("TESTS PASSED:", tests_passed)
+    print("TESTS FAILED:", tests_failed)
+    if(tests_failed > 0):
+        print("Failed on test numbers", failed_tests)

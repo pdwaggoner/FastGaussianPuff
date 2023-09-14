@@ -8,7 +8,7 @@ Created on Wed Sep 21 15:59:36 2022
 import numpy as np
 import pandas as pd
 import datetime
-import numba as nb
+# import numba as nb
 import time
 import CGaussianPuff as C_GP
 
@@ -389,257 +389,257 @@ class vectorizedGAUSSIANPUFF:
             stability_class = "D"
         return stability_class
     
-    @staticmethod
-    @nb.njit
-    def _get_sigma_coefficients(stability_class, X, grid_dims):
-        '''
-        Calculate sigma_{y,z} which are used in the Gausian puff equation
-        sigma_z = a*x^b, x in km,
-        sigma_y = 465.11628*x*tan(THETA) where THETA = 0.017453293*(c-d*ln(x)) where x in km
-        Note: The coefficients don't change vertically (along z) so they're only computed for an XY slice 
-        and later resized to 3D
-        Inputs:
-            stability_class (str): 
-                stability class, a str in A-F
-            X [m] (np.ndarray, float, len=self.N_points): 
-                Flattened version of the 3D X meshgrid
-        Outputs:
-            sigma_y, sigma_z [m] (2D ndarray, float): 
-                size: (self.num_y, self.num_x)
-                sigma_{y,z} values
-        '''
+    # @staticmethod
+    # @nb.njit
+    # def _get_sigma_coefficients(stability_class, X, grid_dims):
+    #     '''
+    #     Calculate sigma_{y,z} which are used in the Gausian puff equation
+    #     sigma_z = a*x^b, x in km,
+    #     sigma_y = 465.11628*x*tan(THETA) where THETA = 0.017453293*(c-d*ln(x)) where x in km
+    #     Note: The coefficients don't change vertically (along z) so they're only computed for an XY slice 
+    #     and later resized to 3D
+    #     Inputs:
+    #         stability_class (str): 
+    #             stability class, a str in A-F
+    #         X [m] (np.ndarray, float, len=self.N_points): 
+    #             Flattened version of the 3D X meshgrid
+    #     Outputs:
+    #         sigma_y, sigma_z [m] (2D ndarray, float): 
+    #             size: (self.num_y, self.num_x)
+    #             sigma_{y,z} values
+    #     '''
 
-        # don't have to reshape if we figure out how to extract an XY plane from the flattened grid
-        X = np.reshape(X, grid_dims)
+    #     # don't have to reshape if we figure out how to extract an XY plane from the flattened grid
+    #     X = np.reshape(X, grid_dims)
 
-        # computes coefficients over XY plane as any direction could be the downwind direction after rotation 
-        xy_grid = X[:, :, 0] # extracts XY plane from the grid
+    #     # computes coefficients over XY plane as any direction could be the downwind direction after rotation 
+    #     xy_grid = X[:, :, 0] # extracts XY plane from the grid
 
-        xy_grid = xy_grid/1000 # convert to km
-        xy_grid = xy_grid.ravel() # work with flattened version of 2D grid
-        n = len(xy_grid)
+    #     xy_grid = xy_grid/1000 # convert to km
+    #     xy_grid = xy_grid.ravel() # work with flattened version of 2D grid
+    #     n = len(xy_grid)
         
-        sigma_y, sigma_z = np.zeros(n), np.zeros(n)
-        for i in range(0, n):
-            x = xy_grid[i]
+    #     sigma_y, sigma_z = np.zeros(n), np.zeros(n)
+    #     for i in range(0, n):
+    #         x = xy_grid[i]
 
-            flag = 0
+    #         flag = 0
 
-            if x <= 0:
-                sigma_y[i], sigma_z[i] = (-1, -1) # set negative values for upwind locations
-            else:
-                # determine a,b,c,d values
-                if stability_class == "A":
-                    if x < .1:
-                        a, b = (122.800, 0.94470)
-                    elif x >= .1 and x < .15:
-                        a, b = (158.080, 1.05420)
-                    elif x >= .15 and x < .20:
-                        a, b = (170.220, 1.09320)
-                    elif x >= .20 and x < .25:
-                        a, b = (179.520, 1.12620)
-                    elif x >= .25 and x < .30:
-                        a, b = (217.410, 1.26440)
-                    elif x >= .30 and x < .40:
-                        (a, b) = (258.890, 1.40940)
-                    elif x >= .40 and x < .50:
-                        (a, b) = (346.750, 1.72830)
-                    elif x >= .5 and x < 3.11:
-                        a, b = (453.850, 2.11660)
-                    else:
-                        flag = 1 # sigma_z = 5000m in this case
-                    c, d = (24.1670, 2.5334)
+    #         if x <= 0:
+    #             sigma_y[i], sigma_z[i] = (-1, -1) # set negative values for upwind locations
+    #         else:
+    #             # determine a,b,c,d values
+    #             if stability_class == "A":
+    #                 if x < .1:
+    #                     a, b = (122.800, 0.94470)
+    #                 elif x >= .1 and x < .15:
+    #                     a, b = (158.080, 1.05420)
+    #                 elif x >= .15 and x < .20:
+    #                     a, b = (170.220, 1.09320)
+    #                 elif x >= .20 and x < .25:
+    #                     a, b = (179.520, 1.12620)
+    #                 elif x >= .25 and x < .30:
+    #                     a, b = (217.410, 1.26440)
+    #                 elif x >= .30 and x < .40:
+    #                     (a, b) = (258.890, 1.40940)
+    #                 elif x >= .40 and x < .50:
+    #                     (a, b) = (346.750, 1.72830)
+    #                 elif x >= .5 and x < 3.11:
+    #                     a, b = (453.850, 2.11660)
+    #                 else:
+    #                     flag = 1 # sigma_z = 5000m in this case
+    #                 c, d = (24.1670, 2.5334)
 
-                elif stability_class == "B":
-                    if x < .2:
-                        a, b = (90.673, 0.93198)
-                    elif x >= .2 and x < .4:
-                        a, b = (98.483, 0.98332)
-                    else:
-                        a, b = (109.300, 1.09710)
-                    c, d = (18.3330, 1.8096)
+    #             elif stability_class == "B":
+    #                 if x < .2:
+    #                     a, b = (90.673, 0.93198)
+    #                 elif x >= .2 and x < .4:
+    #                     a, b = (98.483, 0.98332)
+    #                 else:
+    #                     a, b = (109.300, 1.09710)
+    #                 c, d = (18.3330, 1.8096)
 
-                elif stability_class == "C":
-                    a, b = (61.141, 0.91465) 
-                    c, d = (12.5000, 1.0857)
+    #             elif stability_class == "C":
+    #                 a, b = (61.141, 0.91465) 
+    #                 c, d = (12.5000, 1.0857)
 
-                elif stability_class == "D":
-                    if x < .3:
-                        a, b = (34.459, 0.86974)
-                    elif x >= .3 and x < 1:
-                        a, b = (32.093, 0.81066)
-                    elif x >= 1 and x < 3:
-                        a, b = (32.093, 0.64403)
-                    elif x >= 3 and x < 10:
-                        a, b = (33.504, 0.60486)
-                    elif x >= 10 and x < 30:
-                        a, b = (36.650, 0.56589)
-                    else:
-                        a, b = (44.053, 0.51179)
-                    c, d = (8.3330, 0.72382)
+    #             elif stability_class == "D":
+    #                 if x < .3:
+    #                     a, b = (34.459, 0.86974)
+    #                 elif x >= .3 and x < 1:
+    #                     a, b = (32.093, 0.81066)
+    #                 elif x >= 1 and x < 3:
+    #                     a, b = (32.093, 0.64403)
+    #                 elif x >= 3 and x < 10:
+    #                     a, b = (33.504, 0.60486)
+    #                 elif x >= 10 and x < 30:
+    #                     a, b = (36.650, 0.56589)
+    #                 else:
+    #                     a, b = (44.053, 0.51179)
+    #                 c, d = (8.3330, 0.72382)
 
-                elif stability_class == "E":
-                    if x < .1:
-                        a, b = (24.260, 0.83660)
-                    elif x >= .1 and x < .3:
-                        a, b = (23.331, 0.81956)
-                    elif x >= 0.3 and x < 1:
-                        a, b = (21.628, 0.75660)
-                    elif x >= 1 and x < 2:
-                        a, b = (21.628, 0.63077)
-                    elif x >= 2 and x < 4:
-                        a, b = (22.534, 0.57154)
-                    elif x >=4 and x < 10:
-                        a, b = (24.703, 0.50527)
-                    elif x >=10 and x < 20:
-                        a, b = (26.970, 0.46173)
-                    elif x >= 20 and x < 40:
-                        a, b = (35.420, 0.37615)
-                    else:
-                        a, b = (47.618, 0.29592)
-                    c, d = (6.2500, 0.54287)
+    #             elif stability_class == "E":
+    #                 if x < .1:
+    #                     a, b = (24.260, 0.83660)
+    #                 elif x >= .1 and x < .3:
+    #                     a, b = (23.331, 0.81956)
+    #                 elif x >= 0.3 and x < 1:
+    #                     a, b = (21.628, 0.75660)
+    #                 elif x >= 1 and x < 2:
+    #                     a, b = (21.628, 0.63077)
+    #                 elif x >= 2 and x < 4:
+    #                     a, b = (22.534, 0.57154)
+    #                 elif x >=4 and x < 10:
+    #                     a, b = (24.703, 0.50527)
+    #                 elif x >=10 and x < 20:
+    #                     a, b = (26.970, 0.46173)
+    #                 elif x >= 20 and x < 40:
+    #                     a, b = (35.420, 0.37615)
+    #                 else:
+    #                     a, b = (47.618, 0.29592)
+    #                 c, d = (6.2500, 0.54287)
 
-                elif stability_class == "F":
-                    if x < .2:
-                        a, b = (15.209, 0.81558)
-                    elif x >= .2 and x < .7:
-                        a, b = (14.457, 0.78407)
-                    elif x >= .7 and x < 1:
-                        a, b = (13.953, 0.68465)
-                    elif x >= 1 and x < 2:
-                        a, b = (13.953, 0.63227)
-                    elif x >= 2 and x < 3:
-                        a, b = (14.823, 0.54503)
-                    elif x >= 3 and x < 7:
-                        a, b = (16.187, 0.46490)
-                    elif x >= 7 and x < 15:
-                        a, b = (17.836, 0.41507)
-                    elif x >= 15 and x < 30:
-                        a, b = (22.651, 0.32681)
-                    elif x >= 30 and x < 60:
-                        a, b = (27.074, 0.27436)
-                    else:
-                        a, b = (34.219, 0.21716)
-                    c, d = (4.1667, 0.36191)
+    #             elif stability_class == "F":
+    #                 if x < .2:
+    #                     a, b = (15.209, 0.81558)
+    #                 elif x >= .2 and x < .7:
+    #                     a, b = (14.457, 0.78407)
+    #                 elif x >= .7 and x < 1:
+    #                     a, b = (13.953, 0.68465)
+    #                 elif x >= 1 and x < 2:
+    #                     a, b = (13.953, 0.63227)
+    #                 elif x >= 2 and x < 3:
+    #                     a, b = (14.823, 0.54503)
+    #                 elif x >= 3 and x < 7:
+    #                     a, b = (16.187, 0.46490)
+    #                 elif x >= 7 and x < 15:
+    #                     a, b = (17.836, 0.41507)
+    #                 elif x >= 15 and x < 30:
+    #                     a, b = (22.651, 0.32681)
+    #                 elif x >= 30 and x < 60:
+    #                     a, b = (27.074, 0.27436)
+    #                 else:
+    #                     a, b = (34.219, 0.21716)
+    #                 c, d = (4.1667, 0.36191)
 
-                else:
-                    raise ValueError(">>>>> stability class")
+    #             else:
+    #                 raise ValueError(">>>>> stability class")
 
-                # calculate sigma_xyz
-                Theta = 0.017453293 * (c-d*np.log(x)) # in radius
-                sigma_y[i] = 465.11628 * x * np.tan(Theta) # in meters
+    #             # calculate sigma_xyz
+    #             Theta = 0.017453293 * (c-d*np.log(x)) # in radius
+    #             sigma_y[i] = 465.11628 * x * np.tan(Theta) # in meters
 
-                if flag == 0:
-                    sigma_z[i] = a * x**b # in meters
-                    sigma_z[i] = np.amin(np.array((sigma_z[i], 5000.0)))
-                else:
-                    sigma_z[i] = 5000
+    #             if flag == 0:
+    #                 sigma_z[i] = a * x**b # in meters
+    #                 sigma_z[i] = np.amin(np.array((sigma_z[i], 5000.0)))
+    #             else:
+    #                 sigma_z[i] = 5000
 
-        # reshape into the size of a 2D XY grid
-        # note: don't have to reshape if we can figure out how to tile up to 3D from the flattened version
-        sigma_y = np.reshape(sigma_y, (grid_dims[0], grid_dims[1]))
-        sigma_z = np.reshape(sigma_z, (grid_dims[0], grid_dims[1]))
+    #     # reshape into the size of a 2D XY grid
+    #     # note: don't have to reshape if we can figure out how to tile up to 3D from the flattened version
+    #     sigma_y = np.reshape(sigma_y, (grid_dims[0], grid_dims[1]))
+    #     sigma_z = np.reshape(sigma_z, (grid_dims[0], grid_dims[1]))
 
-        return sigma_y, sigma_z
+    #     return sigma_y, sigma_z
 
-    @staticmethod
-    @nb.njit(parallel=False)
-    def _Gaussian_puff_equation(
-                                    q, ws, z0, 
-                                    X, Y, Z,
-                                    sigma_y, sigma_z,
-                                    sigma_y_max, sigma_z_max,
-                                    ts,
-                                    N_points, c,
-                                    conversion_factor, tol,
-                                    X_ij, Y_ij):
-        '''
-        Gaussian puff equation where wind is assumed to be constant.
-        Due to the nb.njit label, can't access class member variables so they must be passed in (e.g. N_points)
-        Inputs:
-            q [kg] (scalar, float): 
-                total emission corresponding to this puff
-            ws [m/s] (scalar, float): 
-                constant wind speed of the puff
-            z0 [m] (scalar, float): 
-                height of the source
-            X, Y, Z [m] (np.ndarray, float, len = N_points)
-                flattened arrays from np.meshgrid representing the downwind-rotated coordinate grids
-            sigma_ys [m] (np.ndarray, float, len = N_points): 
-                sigma value in y direction for all points on the x-axis
-            sigma_zs [m] (np.ndarray, float, len = N_points): 
-                sigma value in z direction for all points on the x-axis
-            ts [s] (list of float, len = n_t (or len(times)): 
-                time stamp array for a single puff
-            N_points (scalar, int):
-                Number of points on the entire grid.
-            c (np.ndarray, float, len = (n_t, N_points) )
-                Array of zeros to be filled in with concentration values computed here.
-                After evaluation, c[0] corresponds to concentration values at time ts[0] for the entire grid.
-            conversion_factor (scalar, float)
-                Conversion factor from kg/m^3 to ppm. This factor is for ch4 only
-            tol (scalar, float)
-                Tolerance which the exponential thresholding is done with (discussed below)
+    # @staticmethod
+    # @nb.njit(parallel=False)
+    # def _Gaussian_puff_equation(
+    #                                 q, ws, z0, 
+    #                                 X, Y, Z,
+    #                                 sigma_y, sigma_z,
+    #                                 sigma_y_max, sigma_z_max,
+    #                                 ts,
+    #                                 N_points, c,
+    #                                 conversion_factor, tol,
+    #                                 X_ij, Y_ij):
+    #     '''
+    #     Gaussian puff equation where wind is assumed to be constant.
+    #     Due to the nb.njit label, can't access class member variables so they must be passed in (e.g. N_points)
+    #     Inputs:
+    #         q [kg] (scalar, float): 
+    #             total emission corresponding to this puff
+    #         ws [m/s] (scalar, float): 
+    #             constant wind speed of the puff
+    #         z0 [m] (scalar, float): 
+    #             height of the source
+    #         X, Y, Z [m] (np.ndarray, float, len = N_points)
+    #             flattened arrays from np.meshgrid representing the downwind-rotated coordinate grids
+    #         sigma_ys [m] (np.ndarray, float, len = N_points): 
+    #             sigma value in y direction for all points on the x-axis
+    #         sigma_zs [m] (np.ndarray, float, len = N_points): 
+    #             sigma value in z direction for all points on the x-axis
+    #         ts [s] (list of float, len = n_t (or len(times)): 
+    #             time stamp array for a single puff
+    #         N_points (scalar, int):
+    #             Number of points on the entire grid.
+    #         c (np.ndarray, float, len = (n_t, N_points) )
+    #             Array of zeros to be filled in with concentration values computed here.
+    #             After evaluation, c[0] corresponds to concentration values at time ts[0] for the entire grid.
+    #         conversion_factor (scalar, float)
+    #             Conversion factor from kg/m^3 to ppm. This factor is for ch4 only
+    #         tol (scalar, float)
+    #             Tolerance which the exponential thresholding is done with (discussed below)
 
-        Outputs:
-            c (np.ndarray, float, len = (n_t, N_points) )
-                Filled in array of concentration values to be added to the overall concentration time series.
-        '''
+    #     Outputs:
+    #         c (np.ndarray, float, len = (n_t, N_points) )
+    #             Filled in array of concentration values to be added to the overall concentration time series.
+    #     '''
 
-        '''
-        Exponential thresholding
+    #     '''
+    #     Exponential thresholding
 
-        Things of the form e^(-x^2) decay rapidly. This means that grid cells far from the center of the plume
-        contribute negligibly to the overall concentration. The threshold (computed below) comes from solving
+    #     Things of the form e^(-x^2) decay rapidly. This means that grid cells far from the center of the plume
+    #     contribute negligibly to the overall concentration. The threshold (computed below) comes from solving
 
-        term_1_thresh*exp(-w^2) <= tol
+    #     term_1_thresh*exp(-w^2) <= tol
 
-        where C is a scalaring factor based on the emission strength and the dispersion coefficients. This is applied
-        to all the exponentials in the Gaussian puff equation separately which works since exp(-x^2) is bounded above
-        by 1. Any grid cell where the above inequality is true is skipped. Note that w can be arbitrary. So, to
-        re-derive the threshold conditionals below, set w to the argument of the exponential and simplify.
+    #     where C is a scalaring factor based on the emission strength and the dispersion coefficients. This is applied
+    #     to all the exponentials in the Gaussian puff equation separately which works since exp(-x^2) is bounded above
+    #     by 1. Any grid cell where the above inequality is true is skipped. Note that w can be arbitrary. So, to
+    #     re-derive the threshold conditionals below, set w to the argument of the exponential and simplify.
 
-        For the two z terms, only the (Z - z0) has thresholding applied since the (Z+z0) term decays much more quickly.
-        '''
+    #     For the two z terms, only the (Z - z0) has thresholding applied since the (Z+z0) term decays much more quickly.
+    #     '''
 
-        term_1_thresh = q / ((2*np.pi)**(3/2) * (sigma_y_max**2) * sigma_z_max)
+    #     term_1_thresh = q / ((2*np.pi)**(3/2) * (sigma_y_max**2) * sigma_z_max)
 
-        emission_strength = term_1_thresh*conversion_factor
-        threshold = np.log(tol/emission_strength)
+    #     emission_strength = term_1_thresh*conversion_factor
+    #     threshold = np.log(tol/emission_strength)
 
-        sig_y_thresh = np.sqrt(-2*sigma_y_max**2*threshold)
-        sig_z_thresh = np.sqrt(-2*sigma_z_max**2*threshold)
+    #     sig_y_thresh = np.sqrt(-2*sigma_y_max**2*threshold)
+    #     sig_z_thresh = np.sqrt(-2*sigma_z_max**2*threshold)
 
-        for i in range(len(ts)): # temporal index
-            for j in range(N_points): # spatial index
+    #     for i in range(len(ts)): # temporal index
+    #         for j in range(N_points): # spatial index
 
-                # Skips upwind grid cells since sigma_{y,z} = -1 for upwind points
-                if sigma_y[j] < 0 or sigma_z[j] < 0:
-                    continue
+    #             # Skips upwind grid cells since sigma_{y,z} = -1 for upwind points
+    #             if sigma_y[j] < 0 or sigma_z[j] < 0:
+    #                 continue
 
-                # Exponential thresholding conditionals
-                if np.abs(X[j]-ws*ts[i]) >= sig_y_thresh:
-                    continue
+    #             # Exponential thresholding conditionals
+    #             if np.abs(X[j]-ws*ts[i]) >= sig_y_thresh:
+    #                 continue
 
-                if np.abs(Y[j]) >= sig_y_thresh:
-                    continue
+    #             if np.abs(Y[j]) >= sig_y_thresh:
+    #                 continue
 
-                if np.abs(Z[j]-z0) >= sig_z_thresh:
-                    continue
+    #             if np.abs(Z[j]-z0) >= sig_z_thresh:
+    #                 continue
 
-                y_by_sig = Y[j] / sigma_y[j]
-                x_by_sig = (X[j] - ws*ts[i])/sigma_y[j]
+    #             y_by_sig = Y[j] / sigma_y[j]
+    #             x_by_sig = (X[j] - ws*ts[i])/sigma_y[j]
 
-                term_4_a_arg = -0.5*((Z[j]-z0)/sigma_z[j])*((Z[j]-z0)/sigma_z[j])
-                term_4_b_arg = -0.5*((Z[j]+z0)/sigma_z[j])*((Z[j]+z0)/sigma_z[j])
-                term_3_arg = -0.5*(y_by_sig*y_by_sig + x_by_sig*x_by_sig)
+    #             term_4_a_arg = -0.5*((Z[j]-z0)/sigma_z[j])*((Z[j]-z0)/sigma_z[j])
+    #             term_4_b_arg = -0.5*((Z[j]+z0)/sigma_z[j])*((Z[j]+z0)/sigma_z[j])
+    #             term_3_arg = -0.5*(y_by_sig*y_by_sig + x_by_sig*x_by_sig)
 
-                term_1 = q / ((2*np.pi)**(3/2) * (sigma_y[j]**2) * sigma_z[j])
-                term_4 = np.exp(term_3_arg+term_4_a_arg) + np.exp(term_3_arg+term_4_b_arg)
+    #             term_1 = q / ((2*np.pi)**(3/2) * (sigma_y[j]**2) * sigma_z[j])
+    #             term_4 = np.exp(term_3_arg+term_4_a_arg) + np.exp(term_3_arg+term_4_b_arg)
 
-                c[i, j] = term_1*term_4*conversion_factor # compute concentration for single grid cell at time t
+    #             c[i, j] = term_1*term_4*conversion_factor # compute concentration for single grid cell at time t
 
-        return c
+    #     return c
   
     def _concentration_per_puff(self, t_0):
         '''
