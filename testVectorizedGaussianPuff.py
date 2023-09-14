@@ -145,18 +145,18 @@ for i in range(0, len(starts)):
         wind_directions = wd_syn[idx_0 : idx_end+1]
         
         # initialize GAUSSIANPUFF class objects
-        puff = GAUSSIANPUFF(time_stamps, 
-                            source_names, emission_rates, 
-                            wind_speeds, wind_directions,
-                            obs_dt, sim_dt, puff_dt, 
-                            df_sensor_locs, df_source_locs,
-                            quiet=False,
-                            model_id = index
-                            )
+        # puff = GAUSSIANPUFF(time_stamps, 
+        #                     source_names, emission_rates, 
+        #                     wind_speeds, wind_directions,
+        #                     obs_dt, sim_dt, puff_dt, 
+        #                     df_sensor_locs, df_source_locs,
+        #                     quiet=False,
+        #                     model_id = index
+        #                     )
         
-        x_num = 10
-        y_num = 10
-        z_num = 10
+        x_num = 20
+        y_num = 20
+        z_num = 20
 
         vect_puff = vectorizedGAUSSIANPUFF(time_stamps, 
                                         source_names, emission_rates, 
@@ -168,13 +168,14 @@ for i in range(0, len(starts)):
                                         quiet=False
         )
 
-        N_points = vect_puff.N_points
-        puff.x_sensor = vect_puff.X.ravel()
-        puff.y_sensor = vect_puff.Y.ravel()
-        puff.z_sensor = vect_puff.Z.ravel()
-        puff.N_sensor = N_points
-        puff.ch4_sim = np.zeros((puff.N_t_sim, vect_puff.N_points))
-        puff.ch4_sim_res = np.zeros((puff.N_t_obs, vect_puff.N_points))
+        # lie to the old code to make it run on a grid instead of sensors
+        # N_points = vect_puff.N_points
+        # puff.x_sensor = vect_puff.X.ravel()
+        # puff.y_sensor = vect_puff.Y.ravel()
+        # puff.z_sensor = vect_puff.Z.ravel()
+        # puff.N_sensor = N_points
+        # puff.ch4_sim = np.zeros((puff.N_t_sim, vect_puff.N_points))
+        # puff.ch4_sim_res = np.zeros((puff.N_t_obs, vect_puff.N_points))
 
         vect_start = time.time()
         ch4_vect = vect_puff.simulation()
@@ -184,19 +185,21 @@ for i in range(0, len(starts)):
         print("new runtime: ", vect_time)
         print(f"simulation length: {len(vect_puff.time_stamps)} minutes")
 
-        puff_start = time.time()
-        ch4 = puff.simulation()
-        puff_end = time.time()
-        puff_time = puff_end-puff_start
+        # IF RUNNING TESTS FREQUENTLY: Save the array created using the original GP
+        # model using np.save and load it in using np.load (as below)
 
-        print("old runtime: ", puff_end-puff_start)
+        # puff_start = time.time()
+        # ch4 = puff.simulation()
+        # puff_end = time.time()
 
-        # IF RUNNING TESTS FREQUENTLY: Save the array created using the original GP model using np.save
-        # and load it in using np.load (as below)
-        # test_data_dir = "./data/test_data/"
-        # start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
-        # filename = test_data_dir + "ch4-n-" + str(vect_puff.N_points) + "-exp-" + start_time_str + ".npy"
-        # ch4 = np.load(filename)
+        # puff_time = puff_end-puff_start
+        # print("old runtime: ", puff_end-puff_start)
+
+        test_data_dir = "./data/test_data/"
+        start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
+        filename = test_data_dir + "ch4-n-" + str(vect_puff.N_points) + "-exp-" + start_time_str + ".csv"
+        # np.savetxt(filename, ch4, delimiter=",")
+        ch4 = np.loadtxt(filename, delimiter=",")
 
         passed = True
         tol = 10e-6 # float32 precision is what the code originally used, so this is slightly larger than that
@@ -226,10 +229,9 @@ for i in range(0, len(starts)):
         else:
             print(f"Test {i+1} passed")
             tests_passed += 1
-        # %%
 
-    print("NUMER OF TESTS:", num_tests)
-    print("TESTS PASSED:", tests_passed)
-    print("TESTS FAILED:", tests_failed)
-    if(tests_failed > 0):
-        print("Failed on test numbers", failed_tests)
+print("NUMER OF TESTS:", num_tests)
+print("TESTS PASSED:", tests_passed)
+print("TESTS FAILED:", tests_failed)
+if(tests_failed > 0):
+    print("Failed on test numbers", failed_tests)

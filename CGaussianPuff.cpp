@@ -47,12 +47,18 @@ public:
 
     const double two_pi_three_halves = std::pow(2*M_PI, 1.5);
 
-    vec3d map_table;
-
+    vec3d map_table; // precomputed map from the 3D meshgrid index to the 1D raveled index.
+    /* Constructor.
+    Inputs:
+        X, Y, Z: Flattened versions of 3D meshgrids
+        nx, ny, nz: number of points in each direction
+        conversion_factor: conversion between kg/m^3 to ppm for ch4
+        exp_tol: tolerance for the exponential thresholding applied to the Gaussians. Lower tolerance means less accuracy
+        but a faster execution. Runtime and accuracy are both very sensitive to this parameter.
+    */
     CGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int nx, int ny, int nz, 
-                    double conversion_factor, double exp_tol,
-                    vec3d map_table)
+                    double conversion_factor, double exp_tol)
 
     : X(X), Y(Y), Z(Z) , nx(nx), ny(ny), nz(nz), 
     conversion_factor(conversion_factor), exp_tol(exp_tol) {
@@ -65,7 +71,11 @@ public:
         sigma_y = Vector(nx*ny*nz);
         sigma_z = Vector(nx*ny*nz);
 
-        // precomputes the map from the 3D meshgrid index to the 1D raveled index
+        // declares empty 3D vector of integers of size (nx, ny, nz)
+        vec3d map_table(nx, std::vector<std::vector<int>>(ny, std::vector<int>(nz)));
+
+        // precomputes the map from the 3D meshgrid index to the 1D raveled index.
+        // precomputed because the divisions in map() are too expensive to do repeatedly. 
         for(int i = 0; i < nx; i++){
             for(int j = 0; j < ny; j++){
                 for(int k = 0; k < nz; k++){
@@ -77,6 +87,19 @@ public:
         this->map_table = map_table;
     }
 
+    /*  Computes bounds on the grid indices based on where the Gaussian is located.
+    Inputs:
+        thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
+            dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
+        ws, wd: wind speed (m/s) and direction (degrees)
+        t_i: time step (s)
+        x0, y0, z0: coordinates of source (m)
+
+    Returns:
+        A vector of six doubles containing the lower and upper bounds on the i, j, and k indices. Note that these are
+        not rounded to integers as they're used in an intermediate calculation (see calculatePlumeTravelTime) and
+        roundind them early creates a rounding error.
+    */
     std::vector<double> computeIndexBounds(double thresh_xy, double thresh_z,
                                             double ws, double wd, double t_i,
                                             double x0, double y0, double z0){
@@ -93,11 +116,9 @@ public:
         Eigen::Vector2d X0;
         X0 << x_min, y_min;
 
-        Eigen::Vector2d v;
-        v << cos(theta), -sin(theta);
+        Eigen::Vector2d v = R.col(0);
 
-        Eigen::Vector2d vp;
-        vp << sin(theta), cos(theta);
+        Eigen::Vector2d vp = R.col(1);
 
         Eigen::Vector2d tw;
         tw << t_i*ws, 0;
@@ -121,6 +142,16 @@ public:
         return std::vector<double>{i_lower, i_upper, j_lower, j_upper, k_lower, k_upper};
     }
 
+    /* Computes a list of indices to be evaluated based on the location of the Gaussian on the grid.
+    Inputs:
+        thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
+            dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
+        ws, wd: wind speed (m/s) and direction (degrees)
+        t_i: time step (s)
+        x0, y0, z0: coordinates of source (m)
+    Returns:
+        A list of indices to the flattened grids where the Gaussian equation should be evaluated.
+    */
     std::vector<int> getValidIndices(double thresh_xy, double thresh_z,
                                         double ws, double wd, double t_i,
                                         double x0, double y0, double z0){
@@ -181,6 +212,14 @@ public:
         return indices;
     }
 
+    /* Rotates the X and Y grids based on the current wind direction and source location.
+    Inputs:
+        x0, y0, z0: coordinates to the source (m)
+        wd: current wind direction (degrees)
+        X_rot, Y_rot: vectors the same size as the grid to get filled with rotated coordinates.
+    Returns:
+        None, but fills X_rot and Y_rot with the rotated grids.
+    */
     void rotateGrids(double x0, double y0, double z0, double wd,
                                     RefVector X_rot, RefVector Y_rot){
 
@@ -214,6 +253,18 @@ public:
         Y_rot = X_r[1] + X_shift.array()*v[1] + Y_shift.array()*vp[1];
     }
 
+    /* Axis Aligned Bounding Box algorithm. Used to compute the intersections between a ray (wind direction) and a square.
+    See https://tavianator.com/2022/ray_box_boundary.html for details.
+    Inputs:
+        box_min, box_max: 2D vectors containing the minimum and maximum corners of a square in the xy plane.
+        origin: starting location of the ray.
+        invRayDir: elementwise inverse of the ray direction. While the ray direction could be used instead as the input,
+            using the inverse saves on computing multiple divisions.
+    Returns:
+        2D vector containing the times of the ray intersection. For the fast Gaussian Puff algorithm, the ray's origin
+        is always within the box. As such, the returns will have tmin < 0 be the backwards intersection and tmax > 0 
+        be the forward intersection, where the directions refer to traveling in the positive and negative ray direction.
+    */
     Vector AABB(Vector box_min, Vector box_max, Vector origin, Vector invRayDir){
 
         // casts to arrays make it an elementwise product
@@ -225,7 +276,14 @@ public:
 
         return Vector2d(tmin, tmax);
     }
-
+ 
+    /*  Given a point on the edge of a square, finds the nearest of the four corners of the square.
+    Inputs:
+        min_corner, max_corner:  minimum and maximum corners of a square (e.g. lower left and top right).
+        point: a point on the edge of the square.
+    Returns:
+        2D Vector containing the coordintes to the nearest corner of the square. 
+    */
     Vector findNearestCorner(Vector min_corner, Vector max_corner, Vector point){
         
         Vector2d corner;
@@ -245,12 +303,19 @@ public:
         return corner;
     }
 
-    // should we rewrite the AABB calls from here directly into this function?
+    /* Computes the time step when the plume will exit the computational grid. 
+    Inputs:
+        thresh_xy: Gaussian threshold on xy
+        ws, wd: wind speed (m/s) and wind direction (degrees)
+        x0, y0: source coordinates (m)
+    Returns:
+        the time when the plume will be fully off the grid.
+    */
     double calculatePlumeTravelTime(double thresh_xy, 
                                     double ws, double wd, 
                                     double x0, double y0){
 
-        // doesn't need z parameters since plume moves in 2D
+        // doesn't need z parameters since plume only moves in 2D
         std::vector<double> start_box = computeIndexBounds(thresh_xy, 0, 
                                         ws, wd, 0, 
                                         x0, y0, 0);
@@ -302,14 +367,24 @@ public:
         return travelTime;
     }
 
-    void getSigmaCoefficients(char stability_class, Vector XY){
-        XY = XY.array() * 0.001; // convert to km
+    /* Gets dispersion coefficients (sigma_{y,z}) for the entire grid.
+        sigma_z = a*x^b, x in km,
+        sigma_y = 465.11628*x*tan(THETA) where THETA = 0.017453293*(c-d*ln(x)) where x in km
+        Note: sigma_{y,z} = -1 if x < 0 due to there being no upwind dispersion.
+    Inputs:
+        stability_class: a char in A-F from Pasquill stability classes 
+        X_rot: rotated version of the X grid
+    Returns:
+        None, but sigma_y and sigma_z class variables are filled with the dispersion coefficients.
+    */
+    void getSigmaCoefficients(char stability_class, Vector X_rot){
+        X_rot = X_rot.array() * 0.001; // convert to km
 
-        for(int i = 0; i < XY.size(); i++){
+        for(int i = 0; i < X_rot.size(); i++){
             int flag = 0;
             double a, b, c, d;
 
-            double x = XY[i];
+            double x = X_rot[i];
 
             if (x <= 0) {
                 sigma_y[i] = -1;
@@ -466,6 +541,18 @@ public:
         }
     }
 
+    /* Evaluates the Gaussian Puff equation on the grids. 
+    Inputs:
+        q: Total emission corresponding to this puff (kg)
+        ws, wd: wind speed (m/s) and wind direction (degrees)
+        x0, y0, z0: coordinates to the source (m)
+        X_rot, Y_rot: rotated X and Y grids. The Z grid isn't rotated so the member variable is used repeatedly.
+        ts: time series the puff is live for. 
+        c: 2D concentration array. The first index represents the time step, the second index represents the flattened
+        spatial index.
+    Returns:
+        none, but the concentrations are added into the concentration array.
+    */
     void GaussianPuffEquation(
         double q, double ws, double wd,
         double x0, double y0, double z0,
@@ -475,7 +562,7 @@ public:
         double sigma_y_max = sigma_y.maxCoeff();
         double sigma_z_max = sigma_z.maxCoeff();
 
-        // THRESHOLD STUFF
+        // compute thresholds
         double term_1_thresh = q / (two_pi_three_halves * std::pow(sigma_y_max, 2) * sigma_z_max);
         double emission_strength = term_1_thresh * conversion_factor; // called q_{xy} in the writeup
         double threshold = std::log(exp_tol / emission_strength);
@@ -499,7 +586,6 @@ public:
                                         ws, wd, ts[i], 
                                         x0, y0, z0);
             
-
             if(indices.empty()){
                 continue;
             }
@@ -519,7 +605,7 @@ public:
                     continue;
                 }
 
-                double t_xy = sigma_y[j]*thresh_constant;
+                double t_xy = sigma_y[j]*thresh_constant; // local threshold
 
                 // Exponential thresholding conditionals
                 if (std::abs(X_rot_shift[j]) >= t_xy) {
@@ -530,7 +616,7 @@ public:
                     continue;
                 }
 
-                double t_z = sigma_z[j]*thresh_constant;
+                double t_z = sigma_z[j]*thresh_constant; // local threshold
 
                 if (std::abs(Z[j] - z0) >= t_z) {
                     continue;
@@ -557,9 +643,20 @@ public:
         }
     }
 
+    /* Computes the concentration timeseries for a single puff.
+    Inputs:
+        q: Total emission corresponding to this puff (kg)
+        ws, wd: wind speed (m/s) and wind direction (degrees)
+        x0, y0, z0: coordinates to the source (m)
+        stability_class: char in A-F from Pasquill stability classes
+        times: time series the puff is live for
+        ch4: 2D concentration array. First index is time, second index is the flattened spatial index.
+    Returns:
+        None. The concentration is added directly into the ch4 array in GaussianPuffEquation()
+    */
     void concentrationPerPuff(double q, double wd, double ws, 
                                 double x0, double y0, double z0, 
-                                double hour, char stability_class,
+                                char stability_class,
                                 RefVector& times, RefMatrix& ch4){
 
         Vector X_rot(X.size());
@@ -575,11 +672,11 @@ public:
                                 x0, y0, z0,
                                 X_rot, Y_rot,
                                 times, ch4);
-
     }
 
 private:
 
+    // convert wind direction (degrees) to the angle (radians) between the wind vector and positive x-axis
     double windDirectionToAngle(double wd){
         double theta = 270 - wd;
         if(theta < 0) theta = theta + 360;
@@ -599,57 +696,10 @@ private:
         return gridSpacing;
     }
 
-    // maps 3d index to 1d raveled index in numpy 'xy' format meshgrids
+    // maps 3d index to 1d raveled index in numpy 'ij' format meshgrids
     int map(int i, int j, int k){
         return j*nz*nx + i*nz + k;
     }
-
-    // inverts a 1d raveled numpy index to a 3d index in numpy 'xy' format
-    std::vector<int> invertIndex(int l){
-
-        int j = int(l / (nx * nz));
-        l -= (j * nx * nz);
-        int i = floor(l / nz);
-        int k = l % nz;
-
-        return std::vector<int>{i,j,k};
-    }
-    
-    // temp testing function
-    void invertIdxArray(std::vector<int> idx_arr, int nx, int ny, int nz){
-
-        int imin = nx;  // Initialize minimum and maximum indices
-        int imax = -1;
-        int jmin = ny;
-        int jmax = -1;
-        int kmin = nz;
-        int kmax = -1;
-
-        if(idx_arr.empty()){
-            std::cout << "INDEX ARRAY EMPTY\n";
-            return;
-        }
-
-        for(int l : idx_arr){
-            std::vector<int> idx = invertIndex(l);
-            int i = idx[0];
-            int j = idx[1];
-            int k = idx[2];
-
-            if(i<imin) imin = i;
-            if(i>imax) imax = i;
-            if(j<jmin) jmin = j;
-            if(j>jmax) jmax = j;
-            if(k<kmin) kmin = k;
-            if(k>kmax) kmax = k;
-
-        }
-
-        std::cout << imin << " <= i <= " << imax << std::endl;
-        std::cout << jmin << " <= j <= " << jmax << std::endl;
-        std::cout << kmin << " <= k <= " << kmax << std::endl;
-    }
-
 };
 
 
@@ -660,7 +710,7 @@ PYBIND11_MODULE(CGaussianPuff, m) {
     // m.doc() = "Gaussian Puff code";
 
     py::class_<CGaussianPuff>(m, "CGaussianPuff")
-    .def(py::init<Vector, Vector, Vector, int, int, int, double, double, vec3d>())
+    .def(py::init<Vector, Vector, Vector, int, int, int, double, double>())
     .def("GaussianPuffEquation", &CGaussianPuff::GaussianPuffEquation)
     .def("rotateGrids", &CGaussianPuff::rotateGrids)
     .def("concentrationPerPuff", &CGaussianPuff::concentrationPerPuff)
