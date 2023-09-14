@@ -32,7 +32,7 @@ from vectorizedGaussianPuff import vectorizedGAUSSIANPUFF
 #%% 
 # Load in data
 # specify paths
-data_dir = '.data/clean_data/'
+data_dir = './data/clean_data/'
 simulation_data_dir = './puff_results/'
 plot_save_dir = './puff_plots/'
 
@@ -159,10 +159,10 @@ vect_time = vect_end-vect_start
 print("runtime: ", vect_time)
 print(f"simulation length: {len(vect_puff.time_stamps)} minutes")
 
-test_data_dir = "./test_data/"
+test_data_dir = "./data/test_data/"
 start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
 
-filename = test_data_dir + "ch4_n=" + str(vect_puff.N_points) + "_" + start_time_str + "-larger-z.npy"
+filename = test_data_dir + "ch4-n-" + str(vect_puff.N_points) + "-exp-" + start_time_str + ".npy"
 
 ch4 = np.load(filename)
 
