@@ -195,6 +195,7 @@ class vectorizedGAUSSIANPUFF:
         # constructor for the c code
         self.GPC = C_GP.CGaussianPuff(self.X, self.Y, self.Z, 
                                       self.nx, self.ny, self.nz, 
+                                      self.sim_dt,
                                       self.conversion_factor, self.exp_thresh_tol)
 
         # initialize the final simulated concentration array

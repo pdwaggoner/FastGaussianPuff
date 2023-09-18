@@ -35,6 +35,8 @@ class CGaussianPuff{
 
 public:
 
+    double sim_dt;
+
     const Vector X, Y, Z;
     Vector X_rot, Y_rot;
     Vector sigma_y, sigma_z;
@@ -58,9 +60,11 @@ public:
     */
     CGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int nx, int ny, int nz, 
+                    double sim_dt,
                     double conversion_factor, double exp_tol)
 
     : X(X), Y(Y), Z(Z) , nx(nx), ny(ny), nz(nz), 
+    sim_dt(sim_dt),
     conversion_factor(conversion_factor), exp_tol(exp_tol) {
 
         std::vector<double> gridSpacing = computeGridSpacing();
@@ -573,16 +577,16 @@ public:
         double thresh_xy_max = sigma_y_max*thresh_constant;
         double thresh_z_max = sigma_z_max*thresh_constant;
 
-        double t_raw = calculatePlumeTravelTime(thresh_xy_max, ws, wd, x0, y0);
-        int t = ceil(t_raw);
+        double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd, x0, y0); // number of seconds til plume leaves grid
+
+        int n_time_steps = ceil(t/sim_dt);
 
         // bound check on time
-        if(t >= ts.size()){
-            t = ts.size()-1;
+        if(n_time_steps >= c.rows()){
+            n_time_steps = c.rows() - 1;
         }
 
-
-        for (int i = t; i >= 0; i--) {
+        for (int i = n_time_steps; i >= 0; i--) {
 
             double wind_shift = ws*ts[i];
 
@@ -714,7 +718,7 @@ PYBIND11_MODULE(CGaussianPuff, m) {
     // m.doc() = "Gaussian Puff code";
 
     py::class_<CGaussianPuff>(m, "CGaussianPuff")
-    .def(py::init<Vector, Vector, Vector, int, int, int, double, double>())
+    .def(py::init<Vector, Vector, Vector, int, int, int, double, double, double>())
     .def("GaussianPuffEquation", &CGaussianPuff::GaussianPuffEquation)
     .def("rotateGrids", &CGaussianPuff::rotateGrids)
     .def("concentrationPerPuff", &CGaussianPuff::concentrationPerPuff)
