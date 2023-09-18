@@ -101,7 +101,7 @@ public:
         roundind them early creates a rounding error.
     */
     std::vector<double> computeIndexBounds(double thresh_xy, double thresh_z,
-                                            double ws, double wd, double t_i,
+                                            double wind_shift, double wd,
                                             double x0, double y0, double z0){
 
         double x_min = X.minCoeff() - x0;
@@ -121,7 +121,7 @@ public:
         Eigen::Vector2d vp = R.col(1);
 
         Eigen::Vector2d tw;
-        tw << t_i*ws, 0;
+        tw << wind_shift, 0;
 
         Eigen::Vector2d X0_r = R*X0;
         auto X0_rt = X0_r - tw;
@@ -153,11 +153,11 @@ public:
         A list of indices to the flattened grids where the Gaussian equation should be evaluated.
     */
     std::vector<int> getValidIndices(double thresh_xy, double thresh_z,
-                                        double ws, double wd, double t_i,
+                                        double wind_shift, double wd,
                                         double x0, double y0, double z0){
         
         std::vector<double> indexBounds = computeIndexBounds(thresh_xy, thresh_z,
-                                                            ws, wd, t_i,
+                                                            wind_shift, wd,
                                                             x0, y0, z0);
 
         int i_lower = floor(indexBounds[0]);
@@ -315,9 +315,10 @@ public:
                                     double ws, double wd, 
                                     double x0, double y0){
 
-        // doesn't need z parameters since plume only moves in 2D
+        // doesn't need z parameters since plume only moves in 2D. wind shift = 0 since plume hasn't moved
+        double wind_shift = 0;
         std::vector<double> start_box = computeIndexBounds(thresh_xy, 0, 
-                                        ws, wd, 0, 
+                                        wind_shift, wd, 
                                         x0, y0, 0);
 
         double i_min = start_box[0];
@@ -362,7 +363,8 @@ public:
         // compute travel time between the two corners
         Vector2d distance = (grid_corner-box_corner).cwiseAbs();
         invRayDir = invRayDir.cwiseAbs();
-        double travelTime = (distance.array()*invRayDir.array()).minCoeff();
+        double travelDistance = (distance.array()*invRayDir.array()).minCoeff();
+        double travelTime = travelDistance/ws;
 
         return travelTime;
     }
@@ -572,7 +574,7 @@ public:
         double thresh_z_max = sigma_z_max*thresh_constant;
 
         double t_raw = calculatePlumeTravelTime(thresh_xy_max, ws, wd, x0, y0);
-        int t = ceil(t_raw/ws);
+        int t = ceil(t_raw);
 
         // bound check on time
         if(t >= ts.size()){
@@ -582,8 +584,10 @@ public:
 
         for (int i = t; i >= 0; i--) {
 
+            double wind_shift = ws*ts[i];
+
             std::vector<int> indices = getValidIndices(thresh_xy_max, thresh_z_max, 
-                                        ws, wd, ts[i], 
+                                        wind_shift, wd,
                                         x0, y0, z0);
             
             if(indices.empty()){
@@ -596,7 +600,7 @@ public:
             thresh_xy_max = box_max_sig_y*thresh_constant;
             thresh_z_max = box_max_sig_z*thresh_constant;
 
-            Vector X_rot_shift = X_rot.array() - ts[i]*ws; // wind shift
+            Vector X_rot_shift = X_rot.array() - wind_shift; // wind shift
 
             for (int j : indices) {
 
