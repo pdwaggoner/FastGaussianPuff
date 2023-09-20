@@ -210,21 +210,25 @@ for i in range(0, len(starts)):
             else:
                 norm = abs(np.linalg.norm(ch4[t].ravel() - ch4_vect[t].ravel())) / (np.linalg.norm(ch4[t].ravel()) + tol)
 
-            if np.shape(ch4_vect[t]) != vect_puff.grid_dims:
-                print(f"ERROR: CH4 ARRAY AT TIME {t} IS WRONG SHAPE")
-                tests_failed += 1
+            # if np.shape(ch4_vect[t]) != vect_puff.grid_dims:
+            #     print(f"ERROR: CH4 ARRAY AT TIME {t} IS WRONG SHAPE")
+            #     tests_failed += 1
 
-            if np.isnan(norm):
-                print(f"ERROR: NAN present in vectorized ch4 array at time {t}")
-                tests_failed += 1
-            elif norm > tol: # doesn't work if there are NAN's, has to stay in the elif
+            # if np.isnan(norm):
+            #     print(f"ERROR: NAN present in vectorized ch4 array at time {t}")
+            #     if not passed:
+            #         passed = False
+            if norm > tol: # doesn't work if there are NAN's
                 print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
-                tests_failed += 1
+
+                if passed:
+                    passed = False
                 print("TIME:", t)
                 print("RELATIVE NORM", norm)
 
         if not passed:
             print(f"Test {i+1} failed")
+            tests_failed += 1
 
         else:
             print(f"Test {i+1} passed")

@@ -563,7 +563,7 @@ public:
         double q, double ws, double wd,
         double x0, double y0, double z0,
         RefVector X_rot, RefVector Y_rot,
-        const RefVector ts, RefMatrix c){
+        RefMatrix c){
 
         double sigma_y_max = sigma_y.maxCoeff();
         double sigma_z_max = sigma_z.maxCoeff();
@@ -579,7 +579,19 @@ public:
 
         double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd, x0, y0); // number of seconds til plume leaves grid
 
-        int n_time_steps = ceil(t/sim_dt);
+        int n_time_steps = ceil(t/sim_dt); // rescale to unitless number of timesteps
+
+        // if(n_time_steps > 1080){
+        //     std::cout << n_time_steps << std::endl;
+        // }
+
+        // if(n_time_steps > 10000){
+        //     std::cout << n_time_steps << std::endl;
+        //     std::cout << ws << std::endl;
+        //     std::cout << "sig y: " << sigma_y_max << std::endl;
+        //     std::cout << "sig z: " << sigma_z_max << std::endl;
+        //     std::cout << c.rows() << std::endl;
+        // }
 
         // bound check on time
         if(n_time_steps >= c.rows()){
@@ -588,11 +600,13 @@ public:
 
         for (int i = n_time_steps; i >= 0; i--) {
 
-            double wind_shift = ws*ts[i];
+            // wind_shift is distance [m] plume has moved from source
+            double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
 
             std::vector<int> indices = getValidIndices(thresh_xy_max, thresh_z_max, 
                                         wind_shift, wd,
                                         x0, y0, z0);
+
             
             if(indices.empty()){
                 continue;
@@ -665,7 +679,7 @@ public:
     void concentrationPerPuff(double q, double wd, double ws, 
                                 double x0, double y0, double z0, 
                                 char stability_class,
-                                RefVector& times, RefMatrix& ch4){
+                                RefMatrix& ch4){
 
         Vector X_rot(X.size());
         Vector Y_rot(Y.size());
@@ -679,7 +693,7 @@ public:
         GaussianPuffEquation(q, ws, wd,
                                 x0, y0, z0,
                                 X_rot, Y_rot,
-                                times, ch4);
+                                ch4);
     }
 
 private:

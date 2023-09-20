@@ -404,7 +404,6 @@ class vectorizedGAUSSIANPUFF:
         t_end = min(t_end, self.time_stamps_res[-1]) # make sure the end time does not overflow
         idx_0, idx_end = self.time_stamps_res.index(t_0), self.time_stamps_res.index(t_end)
         n_t = idx_end - idx_0
-        times = np.arange(0, n_t) * (self.sim_dt*1.0)  # time value array starting from 0, casted to float
         source_name = self.source_names_res[idx_0]
         total_emission = self.emission_rates_res[idx_0] * self.puff_dt # quantity of emission for this puff
         wind_speed = self.wind_speeds_res[idx_0]
@@ -423,7 +422,7 @@ class vectorizedGAUSSIANPUFF:
             self.GPC.concentrationPerPuff(total_emission, wind_direction, wind_speed,
                                 x0, y0, z0,
                                 stability_class,
-                                times, self.ch4_sim[idx_0:idx_end])
+                                self.ch4_sim[idx_0:idx_end])
 
 
 
@@ -468,9 +467,6 @@ class vectorizedGAUSSIANPUFF:
 
             # run simulation for the current puff
             self._concentration_per_puff(t)
-            end = time.time()
-
-
 
             # report progress
             if self.quiet == False:
