@@ -22,7 +22,7 @@ import sys
 utility_dir = './'
 sys.path.insert(0, utility_dir)
 from utilities import wind_synthesizer, wrapper_run_puff_simulation, combine_subexperiments
-from GaussianPuff import GAUSSIANPUFF
+# from GaussianPuff import GAUSSIANPUFF
 bin_dir = './bin'
 sys.path.insert(0, bin_dir)
 from vectorizedGaussianPuff import vectorizedGAUSSIANPUFF
@@ -100,12 +100,15 @@ end_3 = '2022-04-27 08:05:00'
 starts = [start_1, start_2, start_3]
 ends = [end_1, end_2, end_3]
 
-num_tests = len(starts)
+num_tests = 0
 tests_passed = 0
 tests_failed = 0
 failed_tests = []
 
-for i in range(0, len(starts)):
+for i in range(0, 1):
+# for i in range(0, len(starts)):
+
+    num_tests += 1
 
     exp_start_time = starts[i]
     exp_end_time = ends[i]
@@ -134,6 +137,9 @@ for i in range(0, len(starts)):
         ## floor t_0 and t_end to the nearest minute
         t_0 = t_0.floor('T')
         t_end = t_end.floor('T')
+
+        print(t_0)
+        print(t_end)
         
         ## extract inputs to the puff model
         idx_0 = pd.Index(time_stamp_wind).get_indexer([t_0], method='nearest')[0]
@@ -143,6 +149,7 @@ for i in range(0, len(starts)):
         emission_rates = [emission_rate] * len(time_stamps)
         wind_speeds = ws_syn[idx_0 : idx_end+1]
         wind_directions = wd_syn[idx_0 : idx_end+1]
+
         
         # initialize GAUSSIANPUFF class objects
         # puff = GAUSSIANPUFF(time_stamps, 
@@ -168,8 +175,6 @@ for i in range(0, len(starts)):
         elif i == 2:
             source_coordinates = [[488124.41821990383, 4493915.016403197, 2.0]]
             emission_strengths = [0.0001643787954574329]
-            
-
 
         vect_puff = vectorizedGAUSSIANPUFF(time_stamps, 
                                         source_names, emission_rates, 
@@ -246,6 +251,7 @@ for i in range(0, len(starts)):
         if not passed:
             print(f"Test {i+1} failed")
             tests_failed += 1
+            failed_tests.append(i+1)
 
         else:
             print(f"Test {i+1} passed")

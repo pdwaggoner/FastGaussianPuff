@@ -38,7 +38,8 @@ class CGaussianPuff{
 
 public:
 
-    int sim_dt;
+    int sim_dt, puff_dt;
+    int puff_duration;
 
     const Vector X, Y, Z;
     const Vector wind_speeds, wind_directions;
@@ -68,14 +69,14 @@ public:
     */
     CGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int nx, int ny, int nz, 
-                    int sim_dt,
+                    int sim_dt, int puff_dt, int puff_duration,
                     TimePoint sim_start, TimePoint sim_end,
                     Vector wind_speeds, Vector wind_directions,
                     Matrix source_coordinates, Vector emission_strengths,
                     double conversion_factor, double exp_tol)
 
     : X(X), Y(Y), Z(Z) , nx(nx), ny(ny), nz(nz), 
-    sim_dt(sim_dt), wind_speeds(wind_speeds), wind_directions(wind_directions),
+    sim_dt(sim_dt), puff_dt(puff_dt), puff_duration(puff_duration), wind_speeds(wind_speeds), wind_directions(wind_directions),
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol) {
 
@@ -593,7 +594,7 @@ public:
         double q, double ws, double wd,
         double x0, double y0, double z0,
         RefVector X_rot, RefVector Y_rot,
-        RefMatrix c){
+        RefMatrix ch4){
 
         double sigma_y_max = sigma_y.maxCoeff();
         double sigma_z_max = sigma_z.maxCoeff();
@@ -624,8 +625,8 @@ public:
         // }
 
         // bound check on time
-        if(n_time_steps >= c.rows()){
-            n_time_steps = c.rows() - 1;
+        if(n_time_steps >= ch4.rows()){
+            n_time_steps = ch4.rows() - 1;
         }
 
         for (int i = n_time_steps; i >= 0; i--) {
@@ -690,7 +691,7 @@ public:
                 double term_1 = q / (two_pi_three_halves * sigma_y[j]*sigma_y[j] * sigma_z[j]);
                 double term_4 = std::exp(-0.5*(term_3_arg + term_4_a_arg)) + std::exp(-0.5*(term_3_arg + term_4_b_arg));
 
-                c(i, j) += term_1 * term_4 * conversion_factor;
+                ch4(i, j) += term_1 * term_4 * conversion_factor;
             }
         }
     }
@@ -733,26 +734,23 @@ public:
     void simulate(RefMatrix ch4){
 
         double emission_length = difftime(sim_end, sim_start);
-        int n_time_steps = floor(emission_length/sim_dt);
+        int n_time_steps = floor(emission_length/puff_dt);
 
-        x0 = source_coordinates(0,0);
-        y0 = source_coordinates(0,1);
-        z0 = source_coordinates(0,2);
-
+        // later, for multisource: iterate over source coords
+        setSourceCoordinates(0);
         double q = emission_strengths[0];
 
         time_t current_time = sim_start;
         double report_ratio = 0.1;
-        for(int t = 0; t <= n_time_steps; t++){
+        for(int t = 0; t < n_time_steps; t++){
 
             tm puff_start = *localtime(&current_time);
-            current_time += sim_dt;
+            current_time += puff_dt;
 
-            int puff_lifetime = 1080;
-            if(t+puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-t;
+            if(t+puff_duration >= ch4.rows()) puff_duration = ch4.rows()-t;
 
             concentrationPerPuff(q, wind_directions[t], wind_speeds[t], 
-                                    puff_start.tm_hour, ch4.middleRows(t, puff_lifetime));
+                                    puff_start.tm_hour, ch4.middleRows(t, puff_duration));
 
             if(floor(n_time_steps*report_ratio) == t){
                 std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
@@ -774,6 +772,12 @@ public:
     }
 
 private:
+
+    void setSourceCoordinates(int source_index){
+        x0 = source_coordinates(source_index, 0);
+        y0 = source_coordinates(source_index, 1);
+        z0 = source_coordinates(source_index, 2);
+    }
 
     // convert wind direction (degrees) to the angle (radians) between the wind vector and positive x-axis
     double windDirectionToAngle(double wd){
@@ -809,7 +813,9 @@ PYBIND11_MODULE(CGaussianPuff, m) {
     // m.doc() = "Gaussian Puff code";
 
     py::class_<CGaussianPuff>(m, "CGaussianPuff")
-    .def(py::init<Vector, Vector, Vector, int, int, int, int, TimePoint, TimePoint, Vector, Vector, Matrix, Vector, double, double>())
+    .def(py::init<Vector, Vector, Vector, int, int, int, int, int, int, 
+                    TimePoint, TimePoint, 
+                    Vector, Vector, Matrix, Vector, double, double>())
     .def("simulate", &CGaussianPuff::simulate)
     .def("GaussianPuffEquation", &CGaussianPuff::GaussianPuffEquation)
     .def("rotateGrids", &CGaussianPuff::rotateGrids)

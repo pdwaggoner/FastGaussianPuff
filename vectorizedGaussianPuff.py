@@ -94,6 +94,8 @@ class vectorizedGAUSSIANPUFF:
         '''
         
         # Initialize the configuration
+        # print(np.shape(time_stamps))
+        # exit()
         self.time_stamps = time_stamps 
         self.start_time = time_stamps[0]
         self.end_time = time_stamps[-1]
@@ -103,8 +105,8 @@ class vectorizedGAUSSIANPUFF:
         self.emission_rates = [x/3600 for x in emission_rates] # convert from [kg/hr] to [kg/s]
         self.wind_speeds = wind_speeds 
         self.wind_directions = wind_directions 
-        self.sensor_locations = df_sensor_locations 
-        self.source_locations = df_source_locations 
+        # self.sensor_locations = df_sensor_locations 
+        # self.source_locations = df_source_locations 
         self.obs_dt = obs_dt 
         self.sim_dt = sim_dt 
         self.puff_dt = puff_dt # usually the same as sim_dt
@@ -122,34 +124,34 @@ class vectorizedGAUSSIANPUFF:
         self.model_id = model_id
         
         # resample the input arrays by the given sim_dt
-        self._resample_inputs(self.sim_dt)
+        self._resample_inputs(sim_dt)
         self.N_t_sim = len(self.time_stamps_res) # time stamp length of simulation data 
         
         # extract sensor location information
-        self.sensor_names = df_sensor_locations[colnames['name']].to_list() # list of all sensor names 
-        self.x_sensor = df_sensor_locations[colnames['x']].to_list() # list of x coordinates of all the sensors
-        self.y_sensor = df_sensor_locations[colnames['y']].to_list() # y coordinates 
-        self.z_sensor = df_sensor_locations[colnames['z']].to_list() # z coordinates 
-        self.N_sensor = len(self.sensor_names) # number of sensors
+        # self.sensor_names = df_sensor_locations[colnames['name']].to_list() # list of all sensor names 
+        # self.x_sensor = df_sensor_locations[colnames['x']].to_list() # list of x coordinates of all the sensors
+        # self.y_sensor = df_sensor_locations[colnames['y']].to_list() # y coordinates 
+        # self.z_sensor = df_sensor_locations[colnames['z']].to_list() # z coordinates 
+        # self.N_sensor = len(self.sensor_names) # number of sensors
 
         # extract source location information
-        self.source_names = df_source_locations[colnames['name']].to_list() # list of all potential source names
-        self.x_source = df_source_locations[colnames['x']].to_list() # list of x coordinates of all potential sources
-        self.y_source = df_source_locations[colnames['y']].to_list() # y coordinates 
-        self.z_source = df_source_locations[colnames['z']].to_list() # z coordinates 
-        self.N_source = len(self.source_names) # number of potential sources
+        # self.source_names = df_source_locations[colnames['name']].to_list() # list of all potential source names
+        # self.x_source = df_source_locations[colnames['x']].to_list() # list of x coordinates of all potential sources
+        # self.y_source = df_source_locations[colnames['y']].to_list() # y coordinates 
+        # self.z_source = df_source_locations[colnames['z']].to_list() # z coordinates 
+        # self.N_source = len(self.source_names) # number of potential sources
 
-        if using_sensors:
-            self.using_sensors = True
-            self.X = np.array(self.x_sensor)
-            self.Y = np.array(self.y_sensor)
-            self.Z = np.array(self.z_sensor)
+        # if using_sensors:
+        #     self.using_sensors = True
+        #     self.X = np.array(self.x_sensor)
+        #     self.Y = np.array(self.y_sensor)
+        #     self.Z = np.array(self.z_sensor)
 
-            self.nx = self.N_sensor
-            self.ny = 1
-            self.nz = 1
-            self.N_points = self.N_sensor
-            self.grid_dims = (self.nx, self.ny, self.nz)
+        #     self.nx = self.N_sensor
+        #     self.ny = 1
+        #     self.nz = 1
+        #     self.N_points = self.N_sensor
+        #     self.grid_dims = (self.nx, self.ny, self.nz)
 
         if not using_sensors:
             self.using_sensors = False
@@ -193,12 +195,11 @@ class vectorizedGAUSSIANPUFF:
         # constructor for the c code
         self.GPC = C_GP.CGaussianPuff(self.X, self.Y, self.Z, 
                                       self.nx, self.ny, self.nz, 
-                                      self.sim_dt,
+                                      sim_dt, puff_dt, self.puff_duration,
                                       simulation_start, simulation_end,
                                       self.wind_speeds_res, self.wind_directions_res,
                                       source_coordinates, emission_strengths,
                                       self.conversion_factor, self.exp_thresh_tol)
-        
 
         # initialize the final simulated concentration array
         self.ch4_sim = np.zeros((self.N_t_sim, self.N_points)) # simulation in sim_dt resolution, flattened
@@ -256,6 +257,10 @@ class vectorizedGAUSSIANPUFF:
             self._wind_vector_convert(wind_u, wind_v,direction= 'u_v_2_ws_wd') 
             self.wind_speeds_res = wind_speeds_res # type = list
             self.wind_directions_res = wind_directions_res # type = list
+
+            # print(np.shape(self.wind_speeds_res))
+            # print(np.shape(self.wind_directions_res))
+            # exit()
             
         else:
             raise NotImplementedError(">>>>> resample mode")      
@@ -391,45 +396,36 @@ class vectorizedGAUSSIANPUFF:
             stability_class = "D"
         return stability_class
   
-    def _concentration_per_puff(self, t_0):
-        '''
-        Compute the concentration time series for a single puff created at t_0
-        Inputs:
-            t_0 (scalar, pd.DateTime value): 
-                starting time of the puff
-        Outputs: 
-            None. Instead, the concentration time series for the single puff is added
-            to the overall concentration time series ch4_sim inside of the gaussian_puff_equation call.
-        '''
-        # extract sub data in the given time window
-        t_end = t_0 + pd.Timedelta(self.puff_duration, 'S')
-        t_end = min(t_end, self.time_stamps_res[-1]) # make sure the end time does not overflow
-        idx_0, idx_end = self.time_stamps_res.index(t_0), self.time_stamps_res.index(t_end)
-        n_t = idx_end - idx_0
-        source_name = self.source_names_res[idx_0]
-        total_emission = self.emission_rates_res[idx_0] * self.puff_dt # quantity of emission for this puff
-        wind_speed = self.wind_speeds_res[idx_0]
-        wind_direction = self.wind_directions_res[idx_0]
+    # def _concentration_per_puff(self, t_0):
+    #     '''
+    #     Compute the concentration time series for a single puff created at t_0
+    #     Inputs:
+    #         t_0 (scalar, pd.DateTime value): 
+    #             starting time of the puff
+    #     Outputs: 
+    #         None. Instead, the concentration time series for the single puff is added
+    #         to the overall concentration time series ch4_sim inside of the gaussian_puff_equation call.
+    #     '''
+    #     # extract sub data in the given time window
+    #     t_end = t_0 + pd.Timedelta(self.puff_duration, 'S')
+    #     t_end = min(t_end, self.time_stamps_res[-1]) # make sure the end time does not overflow
+    #     idx_0, idx_end = self.time_stamps_res.index(t_0), self.time_stamps_res.index(t_end)
+    #     n_t = idx_end - idx_0
+    #     source_name = self.source_names_res[idx_0]
+    #     total_emission = self.emission_rates_res[idx_0] * self.puff_dt # quantity of emission for this puff
+    #     wind_speed = self.wind_speeds_res[idx_0]
+    #     wind_direction = self.wind_directions_res[idx_0]
         
-        if source_name == 'None':
-            return # No emission ocurrs and hence no concentration
-        elif n_t == 0:
-            return # No time steps so no concentration to compute (happens at end of time block)    
-        else:
-
-            x0, y0, z0 = self._extract_source_location(source_name) # get source coordinates   
-
-            stability_class = self._stability_classifier(wind_speed, t_0.hour) # determine stability class
-
-            # print(idx_0)
-            # print(idx_end)
-            # print(idx_end-idx_0)
-            # self.GPC.simulate(self.ch4_sim)
+    #     if source_name == 'None':
+    #         return # No emission ocurrs and hence no concentration
+    #     elif n_t == 0:
+    #         return # No time steps so no concentration to compute (happens at end of time block)    
+    #     else:
 
 
-            self.GPC.concentrationPerPuff(total_emission, wind_direction, wind_speed,
-                                t_0.hour,
-                                self.ch4_sim[idx_0:idx_end])
+    #         self.GPC.concentrationPerPuff(total_emission, wind_direction, wind_speed,
+    #                             t_0.hour,
+    #                             self.ch4_sim[idx_0:idx_end])
 
 
 
@@ -465,27 +461,7 @@ class vectorizedGAUSSIANPUFF:
         if self.quiet == False:
             self._model_info_print()
 
-        n_puff = len(self.time_stamps_puff_creation)
-
         self.GPC.simulate(self.ch4_sim)
-
-
-        # loop for each puff
-        # for i, t in enumerate(self.time_stamps_puff_creation): 
-
-            
-
-        #     # run simulation for the current puff
-        #     self._concentration_per_puff(t)
-
-        #     # report progress
-        #     if self.quiet == False:
-        #         if self.model_id == None:
-        #             if i % (n_puff // 10) == 0:
-        #                 print('{}/10 done.'.format(i // (n_puff // 10)))
-        #         else:
-        #             if i % (n_puff // 10) == 0:
-        #                 print('Model {}: {}/10 done.'.format(self.model_id, i // (n_puff // 10)))
         
         # resample results to the obs_dt-resolution
         self.ch4_sim_res = self._resample_simulation(self.ch4_sim, self.obs_dt)
@@ -516,9 +492,6 @@ class vectorizedGAUSSIANPUFF:
             c_matrix_res [ppm] (4D np.array, shape = [N_t_new, self.grid_dims)]): 
                 resampled simulation results 
         '''
-
-        # flattens only the grid but leaves the time series in order
-        # c_flattened = c_matrix.reshape(self.N_t_sim, self.N_points)
 
         df = pd.DataFrame(c_matrix, index = self.time_stamps_res)
         if mode == 'mean':
