@@ -17,10 +17,12 @@ class vectorizedGAUSSIANPUFF:
                  time_stamps, source_names, emission_rates, wind_speeds, wind_directions,
                  obs_dt, sim_dt, puff_dt, 
                  df_sensor_locations, df_source_locations,
+                 simulation_start, simulation_end,
+                 source_coordinates,
+                 emission_strengths,
+                 grid_coordinates=None,
                  using_sensors=True,
                  x_num=None, y_num=None, z_num=None,
-                 two_dimensional_grid=False,
-                 z_height=None,
                  puff_duration = 1080,
                  exp_threshold_tolerance = 1e-9,
                  colnames = {'name' : 'name', 
@@ -155,30 +157,28 @@ class vectorizedGAUSSIANPUFF:
             # parameters for grid
             self.nx = x_num
             self.ny = y_num
-            if two_dimensional_grid:
-                self.nz = 1
-            else:
-                self.nz = z_num
+            self.nz = z_num
             self.N_points = self.nx*self.ny*self.nz
 
-            # set up the grid
-            x_min = np.mean(self.x_sensor) - 2*np.std(self.x_sensor)
-            x_max = np.mean(self.x_sensor) + 2*np.std(self.x_sensor)
-            y_min = np.mean(self.y_sensor) - 2*np.std(self.y_sensor)
-            y_max = np.mean(self.y_sensor) + 2*np.std(self.y_sensor)
+            x_min = grid_coordinates[0]
+            y_min = grid_coordinates[1]
+            z_min = grid_coordinates[2]
+            x_max = grid_coordinates[3]
+            y_max = grid_coordinates[4]
+            z_max = grid_coordinates[5]
 
-            if two_dimensional_grid: # setup for 2D grid
-                if z_height is None:
-                    print("Warning: No height for 2D grid specified. Using METEC default of 2.4. \
-                          To specify a height, set z_height as a parameter during initialization.")
-                    z_min = 2.4
-                    z_max = 2.4
-                else:
-                    z_min = z_height
-                    z_max = z_height
-            else: # standard setup for 3D grid
-                z_min = 0
-                z_max = 10*max(self.z_sensor) # might need to make this higher (max of source and sensor?)
+            # # set up the grid
+            # x_min = np.mean(self.x_sensor) - 2*np.std(self.x_sensor)
+            # x_max = np.mean(self.x_sensor) + 2*np.std(self.x_sensor)
+            # y_min = np.mean(self.y_sensor) - 2*np.std(self.y_sensor)
+            # y_max = np.mean(self.y_sensor) + 2*np.std(self.y_sensor)
+
+        
+            # z_min = 0
+            # z_max = 10*max(self.z_sensor) # might need to make this higher (max of source and sensor?)
+
+            # print(x_min, y_min, z_min, x_max, y_max, z_max)
+            # exit(0)
 
             x, y, z = np.linspace(x_min, x_max, self.nx), np.linspace(y_min, y_max, self.ny), np.linspace(z_min, z_max, self.nz)
             
@@ -189,14 +189,16 @@ class vectorizedGAUSSIANPUFF:
             self.X = self.X.ravel()
             self.Y = self.Y.ravel()
             self.Z = self.Z.ravel()
-        
-        # map_table = np.zeros(self.grid_dims, dtype=np.int32).tolist()
 
         # constructor for the c code
         self.GPC = C_GP.CGaussianPuff(self.X, self.Y, self.Z, 
                                       self.nx, self.ny, self.nz, 
                                       self.sim_dt,
+                                      simulation_start, simulation_end,
+                                      self.wind_speeds_res, self.wind_directions_res,
+                                      source_coordinates, emission_strengths,
                                       self.conversion_factor, self.exp_thresh_tol)
+        
 
         # initialize the final simulated concentration array
         self.ch4_sim = np.zeros((self.N_t_sim, self.N_points)) # simulation in sim_dt resolution, flattened
@@ -419,9 +421,14 @@ class vectorizedGAUSSIANPUFF:
 
             stability_class = self._stability_classifier(wind_speed, t_0.hour) # determine stability class
 
+            # print(idx_0)
+            # print(idx_end)
+            # print(idx_end-idx_0)
+            # self.GPC.simulate(self.ch4_sim)
+
+
             self.GPC.concentrationPerPuff(total_emission, wind_direction, wind_speed,
-                                x0, y0, z0,
-                                stability_class,
+                                t_0.hour,
                                 self.ch4_sim[idx_0:idx_end])
 
 
@@ -460,22 +467,25 @@ class vectorizedGAUSSIANPUFF:
 
         n_puff = len(self.time_stamps_puff_creation)
 
+        self.GPC.simulate(self.ch4_sim)
+
 
         # loop for each puff
-        for i, t in enumerate(self.time_stamps_puff_creation): 
+        # for i, t in enumerate(self.time_stamps_puff_creation): 
 
+            
 
-            # run simulation for the current puff
-            self._concentration_per_puff(t)
+        #     # run simulation for the current puff
+        #     self._concentration_per_puff(t)
 
-            # report progress
-            if self.quiet == False:
-                if self.model_id == None:
-                    if i % (n_puff // 10) == 0:
-                        print('{}/10 done.'.format(i // (n_puff // 10)))
-                else:
-                    if i % (n_puff // 10) == 0:
-                        print('Model {}: {}/10 done.'.format(self.model_id, i // (n_puff // 10)))
+        #     # report progress
+        #     if self.quiet == False:
+        #         if self.model_id == None:
+        #             if i % (n_puff // 10) == 0:
+        #                 print('{}/10 done.'.format(i // (n_puff // 10)))
+        #         else:
+        #             if i % (n_puff // 10) == 0:
+        #                 print('Model {}: {}/10 done.'.format(self.model_id, i // (n_puff // 10)))
         
         # resample results to the obs_dt-resolution
         self.ch4_sim_res = self._resample_simulation(self.ch4_sim, self.obs_dt)

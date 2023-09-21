@@ -2,6 +2,7 @@
 #include <cmath>
 #include <vector>
 #include <time.h>
+#include <chrono>
 
 #include <algorithm>
 
@@ -9,6 +10,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 #include <pybind11/eigen.h>
+#include <pybind11/chrono.h>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -20,6 +22,7 @@ typedef Eigen::MatrixXd Matrix;
 typedef Eigen::Ref<Matrix, 0, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>> RefMatrix;
 
 typedef std::vector<std::vector<std::vector<int> > > vec3d;
+typedef std::chrono::system_clock::time_point TimePoint;
 
 
 struct timeval tv;
@@ -35,14 +38,19 @@ class CGaussianPuff{
 
 public:
 
-    double sim_dt;
+    int sim_dt;
 
     const Vector X, Y, Z;
+    const Vector wind_speeds, wind_directions;
     Vector X_rot, Y_rot;
     Vector sigma_y, sigma_z;
     int nx, ny, nz;
     double dx, dy, dz;
     double x_min, y_min;
+    time_t sim_start, sim_end;
+    Matrix source_coordinates;
+    Vector emission_strengths;
+    double x0, y0, z0; // current iteration's source coordinates
 
     double conversion_factor;
     double exp_tol;
@@ -60,11 +68,15 @@ public:
     */
     CGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int nx, int ny, int nz, 
-                    double sim_dt,
+                    int sim_dt,
+                    TimePoint sim_start, TimePoint sim_end,
+                    Vector wind_speeds, Vector wind_directions,
+                    Matrix source_coordinates, Vector emission_strengths,
                     double conversion_factor, double exp_tol)
 
     : X(X), Y(Y), Z(Z) , nx(nx), ny(ny), nz(nz), 
-    sim_dt(sim_dt),
+    sim_dt(sim_dt), wind_speeds(wind_speeds), wind_directions(wind_directions),
+    source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol) {
 
         std::vector<double> gridSpacing = computeGridSpacing();
@@ -74,6 +86,9 @@ public:
 
         sigma_y = Vector(nx*ny*nz);
         sigma_z = Vector(nx*ny*nz);
+
+        this->sim_start = std::chrono::system_clock::to_time_t(sim_start);
+        this->sim_end = std::chrono::system_clock::to_time_t(sim_end);
 
         // declares empty 3D vector of integers of size (nx, ny, nz)
         vec3d map_table(nx, std::vector<std::vector<int>>(ny, std::vector<int>(nz)));
@@ -371,6 +386,21 @@ public:
         double travelTime = travelDistance/ws;
 
         return travelTime;
+    }
+
+    char stabilityClassifier(double wind_speed, int hour, int day_start=7, int day_end=19) {
+        bool is_day = (hour >= day_start) && (hour <= day_end);
+        char stability_class;
+
+        if (wind_speed < 2.0) {
+            stability_class = is_day ? 'A' : 'E';
+        } else if (wind_speed < 5.0) {
+            stability_class = is_day ? 'B' : 'E';
+        } else {
+            stability_class = 'D';
+        }
+
+        return stability_class;
     }
 
     /* Gets dispersion coefficients (sigma_{y,z}) for the entire grid.
@@ -676,16 +706,20 @@ public:
     Returns:
         None. The concentration is added directly into the ch4 array in GaussianPuffEquation()
     */
-    void concentrationPerPuff(double q, double wd, double ws, 
-                                double x0, double y0, double z0, 
-                                char stability_class,
-                                RefMatrix& ch4){
+    void concentrationPerPuff(double q, double wd, double ws, int hour,
+                                RefMatrix ch4){
 
         Vector X_rot(X.size());
         Vector Y_rot(Y.size());
 
+        x0 = source_coordinates(0,0);
+        y0 = source_coordinates(0,1);
+        z0 = source_coordinates(0,2);
+
         // rotates X and Y grids, stores in X_rot and Y_rot
         rotateGrids(x0, y0, z0, wd, X_rot, Y_rot);
+
+        char stability_class = stabilityClassifier(ws, hour);
 
         // gets sigma coefficients and stores in sigma_{y,z} member vars
         getSigmaCoefficients(stability_class, X_rot);
@@ -694,6 +728,49 @@ public:
                                 x0, y0, z0,
                                 X_rot, Y_rot,
                                 ch4);
+    }
+
+    void simulate(RefMatrix ch4){
+
+        double emission_length = difftime(sim_end, sim_start);
+        int n_time_steps = floor(emission_length/sim_dt);
+
+        x0 = source_coordinates(0,0);
+        y0 = source_coordinates(0,1);
+        z0 = source_coordinates(0,2);
+
+        double q = emission_strengths[0];
+
+        time_t current_time = sim_start;
+        double report_ratio = 0.1;
+        for(int t = 0; t <= n_time_steps; t++){
+
+            tm puff_start = *localtime(&current_time);
+            current_time += sim_dt;
+
+            int puff_lifetime = 1080;
+            if(t+puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-t;
+
+            concentrationPerPuff(q, wind_directions[t], wind_speeds[t], 
+                                    puff_start.tm_hour, ch4.middleRows(t, puff_lifetime));
+
+            if(floor(n_time_steps*report_ratio) == t){
+                std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
+                report_ratio += 0.1;
+            }
+        }
+
+
+        // ch4(Eigen::seq(t,Eigen::last), Eigen::all)
+
+
+        // later: loop over sources
+            // set source coords
+
+            // n_emissions = length(emission_times)
+            // set up loop to have (emission_end-emission_start)/sim_dt time steps
+            // call concentration per puff w those parameters
+
     }
 
 private:
@@ -732,7 +809,8 @@ PYBIND11_MODULE(CGaussianPuff, m) {
     // m.doc() = "Gaussian Puff code";
 
     py::class_<CGaussianPuff>(m, "CGaussianPuff")
-    .def(py::init<Vector, Vector, Vector, int, int, int, double, double, double>())
+    .def(py::init<Vector, Vector, Vector, int, int, int, int, TimePoint, TimePoint, Vector, Vector, Matrix, Vector, double, double>())
+    .def("simulate", &CGaussianPuff::simulate)
     .def("GaussianPuffEquation", &CGaussianPuff::GaussianPuffEquation)
     .def("rotateGrids", &CGaussianPuff::rotateGrids)
     .def("concentrationPerPuff", &CGaussianPuff::concentrationPerPuff)
