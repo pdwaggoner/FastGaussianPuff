@@ -215,7 +215,8 @@ for i in range(0, len(starts)):
 
         passed = True
         tol = 10e-6 # float32 precision is what the code originally used, so this is slightly larger than that
-        for t in range(0, len(ch4)):
+        # stop one step short of end: original code doesn't actually produce results for final time, so skip it
+        for t in range(0, len(ch4)-1):
 
             if np.linalg.norm(ch4[t]) < 10e-3: # ppb measurements are so small we don't care about relative error
                 norm = abs(np.linalg.norm(ch4[t].ravel() - ch4_vect[t].ravel()))
