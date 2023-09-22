@@ -105,8 +105,8 @@ tests_passed = 0
 tests_failed = 0
 failed_tests = []
 
-for i in range(0, 1):
-# for i in range(0, len(starts)):
+# for i in range(0, 1):
+for i in range(0, len(starts)):
 
     num_tests += 1
 
@@ -120,8 +120,6 @@ for i in range(0, 1):
     # set simulation parameters
     obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
     quiet = False 
-
-    exp_run_start_time = datetime.datetime.now() # log run time
 
     # initialize result containers
     exp_id_list, puff_list = [], []
@@ -138,15 +136,9 @@ for i in range(0, 1):
         t_0 = t_0.floor('T')
         t_end = t_end.floor('T')
 
-        print(t_0)
-        print(t_end)
-        
         ## extract inputs to the puff model
         idx_0 = pd.Index(time_stamp_wind).get_indexer([t_0], method='nearest')[0]
         idx_end = pd.Index(time_stamp_wind).get_indexer([t_end], method='nearest')[0]
-        time_stamps = time_stamp_wind[idx_0 : idx_end+1]
-        source_names = [source_name] * len(time_stamps)
-        emission_rates = [emission_rate] * len(time_stamps)
         wind_speeds = ws_syn[idx_0 : idx_end+1]
         wind_directions = wd_syn[idx_0 : idx_end+1]
 
@@ -165,28 +157,26 @@ for i in range(0, 1):
         y_num = 20
         z_num = 20
 
+
         grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
         if i == 0:
             source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
-            emission_strengths = [0.000542505996566694]
+            emission_rate = [1.953021587640098]
         elif i == 1:
             source_coordinates = [[488206.3525776105, 4493911.77819326, 2.0]]
-            emission_strengths = [0.00023433899272340682]
+            emission_rate = [0.8436203738042646]
         elif i == 2:
             source_coordinates = [[488124.41821990383, 4493915.016403197, 2.0]]
-            emission_strengths = [0.0001643787954574329]
+            emission_rate = [0.5917636636467585]
 
-        vect_puff = vectorizedGAUSSIANPUFF(time_stamps, 
-                                        source_names, emission_rates, 
-                                        wind_speeds, wind_directions, 
+        vect_puff = vectorizedGAUSSIANPUFF(wind_speeds, wind_directions, 
                                         obs_dt, sim_dt, puff_dt,
-                                        df_sensor_locs, df_source_locs,
                                         t_0, t_end,
                                         source_coordinates,
-                                        emission_strengths,
+                                        emission_rate,
                                         grid_coordinates=grid_coords,
                                         using_sensors=False,
-                                        x_num=x_num, y_num=y_num, z_num=z_num,
+                                        nx=x_num, ny=y_num, nz=z_num,
                                         quiet=False
         )
 
@@ -205,7 +195,7 @@ for i in range(0, 1):
 
         vect_time = vect_end-vect_start
         print("new runtime: ", vect_time)
-        print(f"simulation length: {len(vect_puff.time_stamps)} minutes")
+        print(f"simulation length: {vect_puff.n_obs} minutes")
 
         # IF RUNNING TESTS FREQUENTLY: Save the array created using the original GP
         # model using np.save and load it in using np.load (as below)

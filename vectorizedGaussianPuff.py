@@ -8,138 +8,80 @@ Created on Wed Sep 21 15:59:36 2022
 import numpy as np
 import pandas as pd
 import datetime
+from math import floor
 # import numba as nb
 import time
 import CGaussianPuff as C_GP
 
 class vectorizedGAUSSIANPUFF:
-    def __init__(self, 
-                 time_stamps, source_names, emission_rates, wind_speeds, wind_directions,
+    def __init__(self,
+                 wind_speeds, wind_directions,
                  obs_dt, sim_dt, puff_dt, 
-                 df_sensor_locations, df_source_locations,
                  simulation_start, simulation_end,
                  source_coordinates,
-                 emission_strengths,
+                 emission_rates,
                  grid_coordinates=None,
-                 using_sensors=True,
-                 x_num=None, y_num=None, z_num=None,
+                 using_sensors=False,
+                 nx=None, ny=None, nz=None,
                  puff_duration = 1080,
                  exp_threshold_tolerance = 1e-9,
-                 colnames = {'name' : 'name', 
-                                'x' : 'utm_easting.m',
-                                'y' : 'utm_northing.m',
-                                'z' : 'height.m',
-                                't' : 'time_stamp.mountain'},
                  conversion_factor = 1e6*1.524,
-                 non_emission_char = 'None',
-                 quiet = False,
-                 ch4_obs = None,
-                 model_id = None):
+                 quiet = False):
         
         '''
         Inputs: 
-            time_stamps (list of pd.DataTime values): 
-                time stamps of the observed continuous monitoing (cm) data
-            source_names (list of str): 
-                true emission source name at each time stamp
-            non_emission_char (str): 
-                a character denoting non-emission case in source_names
-            emission_rates [kg/hr] (list of floats): 
-                true emission rate at each time stamp
             wind_speeds [m/s] (list of floats): 
-                wind speed at each time stamp
+                wind speed at each time stamp, in obs_dt resolution
             wind_directions [degree] (list of floats): 
-                wind direction at each time stamp, 
-                following the conventional definition: 
+                wind direction at each time stamp, in obs_dt resolution.
+                follows the conventional definition: 
                 0 -> wind blowing from North, 90 -> E, 180 -> S, 270 -> W
-            obs_dt [s] (scalar, float): 
+            obs_dt [s] (scalar, int): 
                 time interval (dt) for the observations
-            sim_dt [s] (scalar, float): 
+                NOTE: obs_dt must be a positive integer multiple of sim_dt due to how resampling is done. 
+            sim_dt [s] (scalar, int): 
                 time interval (dt) for the simulation results
-            puff_dt [s] (scalar, float): 
-                time interval (dt) between two successive puffs' creation, 
-                usually it's set to be equal to sim_dt
-            df_sensor_locations (pd.DataFrame): 
-                locations of sensors, 
-                columns include: name, utm_easting, utm_northing, and height
-            df_source_locations (pd.DataFrame): 
-                locations of sources
-                columns include: name, utm_easting, utm_northing, and height
+                NOTE: must be an integer number of seconds due to how timestamps are handled in C.
+            puff_dt [s] (scalar, int): 
+                time interval (dt) between two successive puffs' creation
+            simulation_start, simulation_end (pd.DateTime values)
+                start and end times for the emission to be simulated.
+            source_coordinates (array, size=(n_sources, 3)) [m]:
+                holds source coordinates in (x,y,z) format in meters for each source.
+            emission_rates: (array, length=n_sources) [kg/hr]:
+                rate that each source is emitting at in kg/hr.
+            grid_coordinates: (array, length=6) [m]
+                holds the coordinates for the corners of the grid to be created.
+                format is grid_coordinates=[min_x, min_y, min_z, max_x, max_y, max_z]
             using_sensors (boolean):
                 If True, ignores grid-related input parameters and only simulates at sensor locations
                 given in df_sensor_locations.
-            two_dimensional_grid (boolean):
-                If True, ignores z_num as an input and only creates a 2D grid in XY. If z_height is set,
-                the 2D grid is placed at that height.
-            z_height [m] (scalar, float):
-                Height at which the 2D grid is created at. Only used if two_dimensional_grid=True (above)
-            x_num, y_num, z_num (scalar, int):
+            nx, ny, ny (scalar, int):
                 Number of points for the grid the x, y, and z directions
             puff_duration [s] (int):
                 how many seconds a puff can 'live'; we assume a puff will fade away after a certain time
             exp_threshold_tolerance (scalar, float):
                 the tolerance used to threshold the exponentials when evaluating the Gaussian equation
-            colnames (dictionary): 
-                column names used in the input dataframes
             conversion_factor (scalar, float): 
                 convert from kg/m^3 to ppm, this factor is for ch4 only
             quiet (boolean): 
                 if output progress information while running or not
-            ch4_obs [ppm] (2D array, shape = [N_t_obs, N_sensor]): 
-                the observed ch4 concentration if available
-                the column order of ch4_obs must be consistent with sensor_names
-            model_id (int or str):
-                unique id for the current puff object, 
-                useful to distinguish multiple puff objects when run code parallelly   
         '''
-        
-        # Initialize the configuration
-        # print(np.shape(time_stamps))
-        # exit()
-        self.time_stamps = time_stamps 
-        self.start_time = time_stamps[0]
-        self.end_time = time_stamps[-1]
-        self.N_t_obs = len(self.time_stamps) # time stamp length in observation 
-        self.source_names = source_names 
-        self.non_emission_char = non_emission_char 
-        self.emission_rates = [x/3600 for x in emission_rates] # convert from [kg/hr] to [kg/s]
-        self.wind_speeds = wind_speeds 
-        self.wind_directions = wind_directions 
-        # self.sensor_locations = df_sensor_locations 
-        # self.source_locations = df_source_locations 
         self.obs_dt = obs_dt 
         self.sim_dt = sim_dt 
-        self.puff_dt = puff_dt # usually the same as sim_dt
-        self.time_stamps_puff_creation = \
-        list(pd.date_range(start = time_stamps[0], 
-                           end = time_stamps[-1], 
-                           freq = str(puff_dt)+'S')) # time stamps when puffs are created
-                                                       
-        self.puff_duration = puff_duration
-        self.exp_thresh_tol = exp_threshold_tolerance
-        self.colnames = colnames
-        self.conversion_factor = conversion_factor 
-        self.quiet = quiet
-        self.ch4_obs = ch4_obs
-        self.model_id = model_id
-        
-        # resample the input arrays by the given sim_dt
-        self._resample_inputs(sim_dt)
-        self.N_t_sim = len(self.time_stamps_res) # time stamp length of simulation data 
-        
-        # extract sensor location information
-        # self.sensor_names = df_sensor_locations[colnames['name']].to_list() # list of all sensor names 
-        # self.x_sensor = df_sensor_locations[colnames['x']].to_list() # list of x coordinates of all the sensors
-        # self.y_sensor = df_sensor_locations[colnames['y']].to_list() # y coordinates 
-        # self.z_sensor = df_sensor_locations[colnames['z']].to_list() # z coordinates 
-        # self.N_sensor = len(self.sensor_names) # number of sensors
+        self.puff_dt = puff_dt
 
-        # extract source location information
-        # self.source_names = df_source_locations[colnames['name']].to_list() # list of all potential source names
-        # self.x_source = df_source_locations[colnames['x']].to_list() # list of x coordinates of all potential sources
-        # self.y_source = df_source_locations[colnames['y']].to_list() # y coordinates 
-        # self.z_source = df_source_locations[colnames['z']].to_list() # z coordinates 
-        # self.N_source = len(self.source_names) # number of potential sources
+        self.sim_start = simulation_start
+        self.sim_end = simulation_end
+
+        self.quiet = quiet
+
+        ns = (simulation_end-simulation_start).total_seconds() + 60 # +1 minute for (end-start) + 1
+        self.n_obs = floor(ns/obs_dt) # number of observed data points we have
+
+        # resample the wind data to the simulation resolution
+        self._interpolate_wind_data(wind_speeds, wind_directions, sim_dt, simulation_start, simulation_end)
+        self.n_sim = len(self.time_stamps_resampled) # number of simulation time steps
 
         # if using_sensors:
         #     self.using_sensors = True
@@ -153,13 +95,13 @@ class vectorizedGAUSSIANPUFF:
         #     self.N_points = self.N_sensor
         #     self.grid_dims = (self.nx, self.ny, self.nz)
 
+        # creates grid
         if not using_sensors:
             self.using_sensors = False
 
-            # parameters for grid
-            self.nx = x_num
-            self.ny = y_num
-            self.nz = z_num
+            self.nx = nx
+            self.ny = ny
+            self.nz = nz
             self.N_points = self.nx*self.ny*self.nz
 
             x_min = grid_coordinates[0]
@@ -168,19 +110,6 @@ class vectorizedGAUSSIANPUFF:
             x_max = grid_coordinates[3]
             y_max = grid_coordinates[4]
             z_max = grid_coordinates[5]
-
-            # # set up the grid
-            # x_min = np.mean(self.x_sensor) - 2*np.std(self.x_sensor)
-            # x_max = np.mean(self.x_sensor) + 2*np.std(self.x_sensor)
-            # y_min = np.mean(self.y_sensor) - 2*np.std(self.y_sensor)
-            # y_max = np.mean(self.y_sensor) + 2*np.std(self.y_sensor)
-
-        
-            # z_min = 0
-            # z_max = 10*max(self.z_sensor) # might need to make this higher (max of source and sensor?)
-
-            # print(x_min, y_min, z_min, x_max, y_max, z_max)
-            # exit(0)
 
             x, y, z = np.linspace(x_min, x_max, self.nx), np.linspace(y_min, y_max, self.ny), np.linspace(z_min, z_max, self.nz)
             
@@ -195,75 +124,53 @@ class vectorizedGAUSSIANPUFF:
         # constructor for the c code
         self.GPC = C_GP.CGaussianPuff(self.X, self.Y, self.Z, 
                                       self.nx, self.ny, self.nz, 
-                                      sim_dt, puff_dt, self.puff_duration,
+                                      sim_dt, puff_dt, puff_duration,
                                       simulation_start, simulation_end,
-                                      self.wind_speeds_res, self.wind_directions_res,
-                                      source_coordinates, emission_strengths,
-                                      self.conversion_factor, self.exp_thresh_tol)
+                                      self.wind_speeds_sim, self.wind_directions_sim,
+                                      source_coordinates, emission_rates,
+                                      conversion_factor, exp_threshold_tolerance)
 
         # initialize the final simulated concentration array
-        self.ch4_sim = np.zeros((self.N_t_sim, self.N_points)) # simulation in sim_dt resolution, flattened
-        self.ch4_sim_res =  np.zeros((self.N_t_obs, *self.grid_dims)) # simulation resampled to obs_dt resolution
+        self.ch4_sim = np.zeros((self.n_sim, self.N_points)) # simulation in sim_dt resolution, flattened
+        self.ch4_sim_res =  np.zeros((self.n_obs, *self.grid_dims)) # simulation resampled to obs_dt resolution
 
-    def _resample_inputs(self, dt_resample, resample_mode = 'interp'):
+    def _interpolate_wind_data(self, wind_speeds, wind_directions, sim_dt, sim_start, sim_end):
         '''
-        Resample time_stamps, source_names, emision_rates, wind_speeds, wind_directions
-        to target resolution.
+        Resample wind_speeds and wind_directions to the simulation resolution by interpolation.
         Inputs:
-            dt_resample [s] (float): 
-                the target time resolution to resample
-            resample_mode (str): 
-                method of resampling, 'pad' for padding, 'interp' for linear interpolation. 
+            sim_dt [s] (int): 
+                the target time resolution to resample to
+            sim_start, sim_end (pd.DateTime)
+                DateTimes the simulation start and ends at
+            n_obs (int)
+                number of observation data points across the simulation time range
         '''
-        if resample_mode == 'pad': # pad for all quantities
-            df = pd.DataFrame(data = {'source_names' : self.source_names,
-                                      'emission_rates' : self.emission_rates, 
-                                      'wind_speeds' : self.wind_speeds, 
-                                      'wind_directions' : self.wind_directions}, 
-                              index = self.time_stamps)
-            df = df.resample(str(dt_resample)+'S').ffill()
-            # resampled quantities:
-            self.time_stamps_res = df.index.to_list() 
-            self.emission_rates_res = df['emission_rates'].to_list() 
-            self.source_names_res = df['source_names'].to_list() 
-            self.wind_speeds_res = df['wind_speeds'].to_list() 
-            self.wind_directions_res = df['wind_directions'].to_list() 
 
-        elif resample_mode == 'interp': 
-            # pad for source_name and emission_rate
-            df1 = pd.DataFrame(data = {'source_names' : self.source_names,
-                                      'emission_rates' : self.emission_rates}, 
-                               index = self.time_stamps)
-            df1 = df1.resample(str(dt_resample)+'S').ffill()
-            self.time_stamps_res = df1.index.to_list()
-            self.emission_rates_res = df1['emission_rates'].to_list() 
-            self.source_names_res = df1['source_names'].to_list() 
-            
-            # interpolate for wind_speeds and wind_directions:
-            ## 1. convert ws & wd to x and y component of wind (denoted by u, v, respectively)
-            ## 2. interpolate u and v
-            ## 3. bring resampled u and v back to resampled ws and wd
-            wind_u, wind_v = self._wind_vector_convert(self.wind_speeds, 
-                                                       self.wind_directions,
-                                                       direction = 'ws_wd_2_u_v')
-            
-            df2 = pd.DataFrame(data = {'wind_u' : wind_u,
-                                       'wind_v' : wind_v}, 
-                               index = self.time_stamps)
-            df2 = df2.resample(str(dt_resample)+'S').interpolate()
-            wind_u = df2['wind_u'].to_list()
-            wind_v = df2['wind_v'].to_list()
-            wind_speeds_res, wind_directions_res = \
-            self._wind_vector_convert(wind_u, wind_v,direction= 'u_v_2_ws_wd') 
-            self.wind_speeds_res = wind_speeds_res # type = list
-            self.wind_directions_res = wind_directions_res # type = list
+        # creates a timeseries at obs_dt resolution
+        time_stamps = pd.date_range(sim_start, sim_end, self.n_obs)
 
-            # print(np.shape(self.wind_speeds_res))
-            # print(np.shape(self.wind_directions_res))
-            # exit()
-            
-        else:
-            raise NotImplementedError(">>>>> resample mode")      
+        # interpolate for wind_speeds and wind_directions:
+        ## 1. convert ws & wd to x and y component of wind (denoted by u, v, respectively)
+        ## 2. interpolate u and v
+        ## 3. bring resampled u and v back to resampled ws and wd
+        wind_u, wind_v = self._wind_vector_convert(wind_speeds, 
+                                                    wind_directions,
+                                                    direction = 'ws_wd_2_u_v')
+
+
+        # resamples wind data to sim_dt resolution
+        wind_df = pd.DataFrame(data = {'wind_u' : wind_u,
+                                    'wind_v' : wind_v}, 
+                            index = time_stamps)
+        
+        wind_df = wind_df.resample(str(sim_dt)+'S').interpolate()
+        wind_u = wind_df['wind_u'].to_list()
+        wind_v = wind_df['wind_v'].to_list()
+
+        self.wind_speeds_sim, self.wind_directions_sim = self._wind_vector_convert(wind_u, wind_v,direction= 'u_v_2_ws_wd') 
+
+        # saves the resolution the wind data was resampled to so we can resample back to obs_dt at the end
+        self.time_stamps_resampled = wind_df.index.to_list()
 
     def _extract_source_location(self, source_name):
         '''
@@ -447,10 +354,6 @@ class vectorizedGAUSSIANPUFF:
         else:
             print(f"         Running in grid mode with grid dimensions {self.grid_dims}")
         
-        
-        
-        
-        
     def simulation(self):
         '''
         Main code for simulation
@@ -477,7 +380,7 @@ class vectorizedGAUSSIANPUFF:
         
         return self.ch4_sim_res
     
-    def _resample_simulation(self, c_matrix, dt, mode = 'mean'):
+    def _resample_simulation(self, c_matrix, obs_dt, mode = 'mean'):
         '''
         Resample the simulation results 
         Inputs:
@@ -493,16 +396,16 @@ class vectorizedGAUSSIANPUFF:
                 resampled simulation results 
         '''
 
-        df = pd.DataFrame(c_matrix, index = self.time_stamps_res)
+        df = pd.DataFrame(c_matrix, index = self.time_stamps_resampled)
         if mode == 'mean':
-            df = df.resample(str(dt)+'S').mean()
+            df = df.resample(str(obs_dt)+'S').mean()
         elif mode == 'resample':
-            df = df.resample(str(dt)+'S').asfreq()
+            df = df.resample(str(obs_dt)+'S').asfreq()
         else:
             raise NotImplementedError(">>>>> sim to obs resampling mode") 
         
         c_matrix_res = df.to_numpy()
-        c_matrix_res = np.reshape(c_matrix_res, (self.N_t_obs, *self.grid_dims)) # reshape to grid coordinates
+        c_matrix_res = np.reshape(c_matrix_res, (self.n_obs, *self.grid_dims)) # reshape to grid coordinates
         
         return c_matrix_res
     

@@ -164,7 +164,7 @@ for i in range(0, len(starts)):
                                         obs_dt, sim_dt, puff_dt,
                                         df_sensor_locs, df_source_locs,
                                         using_sensors=False,
-                                        x_num=x_num, y_num=y_num, z_num=z_num,
+                                        nx=x_num, ny=y_num, nz=z_num,
                                         quiet=False
         )
 
@@ -183,7 +183,7 @@ for i in range(0, len(starts)):
 
         vect_time = vect_end-vect_start
         print("new runtime: ", vect_time)
-        print(f"simulation length: {len(vect_puff.time_stamps)} minutes")
+        print(f"simulation length: {vect_puff.n_obs} minutes")
 
         # IF RUNNING TESTS FREQUENTLY: Save the array created using the original GP
         # model using np.save and load it in using np.load (as below)

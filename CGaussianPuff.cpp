@@ -738,7 +738,8 @@ public:
 
         // later, for multisource: iterate over source coords
         setSourceCoordinates(0);
-        double q = emission_strengths[0];
+        double q = emission_strengths[0]/3600; // convert to kg/s
+        double emission_per_puff = q*puff_dt;
 
         time_t current_time = sim_start;
         double report_ratio = 0.1;
@@ -749,7 +750,7 @@ public:
 
             if(t+puff_duration >= ch4.rows()) puff_duration = ch4.rows()-t;
 
-            concentrationPerPuff(q, wind_directions[t], wind_speeds[t], 
+            concentrationPerPuff(emission_per_puff, wind_directions[t], wind_speeds[t], 
                                     puff_start.tm_hour, ch4.middleRows(t, puff_duration));
 
             if(floor(n_time_steps*report_ratio) == t){
