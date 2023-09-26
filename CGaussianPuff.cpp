@@ -47,14 +47,16 @@ public:
     Vector sigma_y, sigma_z;
     int nx, ny, nz;
     double dx, dy, dz;
-    double x_min, y_min;
     time_t sim_start, sim_end;
     Matrix source_coordinates;
     Vector emission_strengths;
     double x0, y0, z0; // current iteration's source coordinates
+    double x_min, y_min; // current mins for the grid centered at the current source
 
     double conversion_factor;
     double exp_tol;
+
+    bool quiet;
 
     const double two_pi_three_halves = std::pow(2*M_PI, 1.5);
 
@@ -73,12 +75,13 @@ public:
                     TimePoint sim_start, TimePoint sim_end,
                     Vector wind_speeds, Vector wind_directions,
                     Matrix source_coordinates, Vector emission_strengths,
-                    double conversion_factor, double exp_tol)
+                    double conversion_factor, double exp_tol,
+                    bool quiet)
 
     : X(X), Y(Y), Z(Z) , nx(nx), ny(ny), nz(nz), 
     sim_dt(sim_dt), puff_dt(puff_dt), puff_duration(puff_duration), wind_speeds(wind_speeds), wind_directions(wind_directions),
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
-    conversion_factor(conversion_factor), exp_tol(exp_tol) {
+    conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
 
         std::vector<double> gridSpacing = computeGridSpacing();
         dx = gridSpacing[0];
@@ -111,7 +114,7 @@ public:
     Inputs:
         thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
             dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
-        ws, wd: wind speed (m/s) and direction (degrees)
+        ws, wd: wind speed (m/s) and direction (radians)
         t_i: time step (s)
         x0, y0, z0: coordinates of source (m)
 
@@ -121,17 +124,11 @@ public:
         roundind them early creates a rounding error.
     */
     std::vector<double> computeIndexBounds(double thresh_xy, double thresh_z,
-                                            double wind_shift, double wd,
-                                            double x0, double y0, double z0){
-
-        double x_min = X.minCoeff() - x0;
-        double y_min = Y.minCoeff() - y0;
-
-        double theta = windDirectionToAngle(wd);
+                                            double wind_shift, double wd){
 
         Eigen::Matrix2d R;
-        R << cos(theta), sin(theta),
-            -sin(theta), cos(theta);
+        R << cos(wd), sin(wd),
+            -sin(wd), cos(wd);
 
         Eigen::Vector2d X0;
         X0 << x_min, y_min;
@@ -166,19 +163,17 @@ public:
     Inputs:
         thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
             dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
-        ws, wd: wind speed (m/s) and direction (degrees)
+        ws, wd: wind speed (m/s) and direction (radians)
         t_i: time step (s)
         x0, y0, z0: coordinates of source (m)
     Returns:
         A list of indices to the flattened grids where the Gaussian equation should be evaluated.
     */
     std::vector<int> getValidIndices(double thresh_xy, double thresh_z,
-                                        double wind_shift, double wd,
-                                        double x0, double y0, double z0){
+                                        double wind_shift, double wd){
         
         std::vector<double> indexBounds = computeIndexBounds(thresh_xy, thresh_z,
-                                                            wind_shift, wd,
-                                                            x0, y0, z0);
+                                                            wind_shift, wd);
 
         int i_lower = floor(indexBounds[0]);
         int i_upper = ceil(indexBounds[1]);
@@ -234,32 +229,26 @@ public:
 
     /* Rotates the X and Y grids based on the current wind direction and source location.
     Inputs:
-        x0, y0, z0: coordinates to the source (m)
-        wd: current wind direction (degrees)
+        wd: current wind direction (radians)
         X_rot, Y_rot: vectors the same size as the grid to get filled with rotated coordinates.
     Returns:
         None, but fills X_rot and Y_rot with the rotated grids.
     */
-    void rotateGrids(double x0, double y0, double z0, double wd,
+    void rotateGrids(double wd,
                                     RefVector X_rot, RefVector Y_rot){
 
-        double x_min = X.minCoeff() - x0;
-        double y_min = Y.minCoeff() - y0;
-
-        double theta = windDirectionToAngle(wd);
-
         Eigen::Matrix2d R;
-        R << cos(theta), sin(theta),
-            -sin(theta), cos(theta);
+        R << cos(wd), sin(wd),
+            -sin(wd), cos(wd);
 
         Eigen::Vector2d X0;
         X0 << x_min, y_min;
 
         Eigen::Vector2d v;
-        v << cos(theta), -sin(theta);
+        v << cos(wd), -sin(wd);
 
         Eigen::Vector2d vp;
-        vp << sin(theta), cos(theta);
+        vp << sin(wd), cos(wd);
 
         Eigen::Vector2d X_r = R*X0;
 
@@ -326,28 +315,23 @@ public:
     /* Computes the time step when the plume will exit the computational grid. 
     Inputs:
         thresh_xy: Gaussian threshold on xy
-        ws, wd: wind speed (m/s) and wind direction (degrees)
-        x0, y0: source coordinates (m)
+        ws, wd: wind speed (m/s) and wind direction (radians)
     Returns:
         the time when the plume will be fully off the grid.
     */
     double calculatePlumeTravelTime(double thresh_xy, 
-                                    double ws, double wd, 
-                                    double x0, double y0){
+                                    double ws, double wd){
 
         // doesn't need z parameters since plume only moves in 2D. wind shift = 0 since plume hasn't moved
         double wind_shift = 0;
         std::vector<double> start_box = computeIndexBounds(thresh_xy, 0, 
-                                        wind_shift, wd, 
-                                        x0, y0, 0);
+                                        wind_shift, wd);
 
         double i_min = start_box[0];
         double i_max = start_box[1];
         double j_min = start_box[2];
         double j_max = start_box[3];
 
-        double x_min = X.minCoeff() - x0;
-        double y_min = Y.minCoeff() - y0;
         double x_max = X.maxCoeff() - x0;
         double y_max = Y.maxCoeff() - y0;
 
@@ -365,8 +349,7 @@ public:
 
         Vector2d origin(0,0);
 
-        double theta = windDirectionToAngle(wd);
-        Vector2d rayDir(cos(theta), sin(theta));
+        Vector2d rayDir(cos(wd), sin(wd));
         Vector2d invRayDir = rayDir.cwiseInverse();
 
         // finding the last corner of the threshold box to leave the grid
@@ -581,8 +564,7 @@ public:
     /* Evaluates the Gaussian Puff equation on the grids. 
     Inputs:
         q: Total emission corresponding to this puff (kg)
-        ws, wd: wind speed (m/s) and wind direction (degrees)
-        x0, y0, z0: coordinates to the source (m)
+        ws, wd: wind speed (m/s) and wind direction (radians)
         X_rot, Y_rot: rotated X and Y grids. The Z grid isn't rotated so the member variable is used repeatedly.
         ts: time series the puff is live for. 
         c: 2D concentration array. The first index represents the time step, the second index represents the flattened
@@ -592,7 +574,6 @@ public:
     */
     void GaussianPuffEquation(
         double q, double ws, double wd,
-        double x0, double y0, double z0,
         RefVector X_rot, RefVector Y_rot,
         RefMatrix ch4){
 
@@ -600,29 +581,17 @@ public:
         double sigma_z_max = sigma_z.maxCoeff();
 
         // compute thresholds
-        double term_1_thresh = q / (two_pi_three_halves * std::pow(sigma_y_max, 2) * sigma_z_max);
-        double emission_strength = term_1_thresh * conversion_factor; // called q_{xy} in the writeup
+        double term_1_thresh = q / (two_pi_three_halves * sigma_y_max*sigma_y_max * sigma_z_max);
+        double emission_strength = term_1_thresh * conversion_factor; // called q_{yz} in the writeup
         double threshold = std::log(exp_tol / emission_strength);
         double thresh_constant = std::sqrt(-2*threshold);
 
         double thresh_xy_max = sigma_y_max*thresh_constant;
         double thresh_z_max = sigma_z_max*thresh_constant;
 
-        double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd, x0, y0); // number of seconds til plume leaves grid
+        double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd); // number of seconds til plume leaves grid
 
         int n_time_steps = ceil(t/sim_dt); // rescale to unitless number of timesteps
-
-        // if(n_time_steps > 1080){
-        //     std::cout << n_time_steps << std::endl;
-        // }
-
-        // if(n_time_steps > 10000){
-        //     std::cout << n_time_steps << std::endl;
-        //     std::cout << ws << std::endl;
-        //     std::cout << "sig y: " << sigma_y_max << std::endl;
-        //     std::cout << "sig z: " << sigma_z_max << std::endl;
-        //     std::cout << c.rows() << std::endl;
-        // }
 
         // bound check on time
         if(n_time_steps >= ch4.rows()){
@@ -635,10 +604,8 @@ public:
             double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
 
             std::vector<int> indices = getValidIndices(thresh_xy_max, thresh_z_max, 
-                                        wind_shift, wd,
-                                        x0, y0, z0);
+                                        wind_shift, wd);
 
-            
             if(indices.empty()){
                 continue;
             }
@@ -699,10 +666,8 @@ public:
     /* Computes the concentration timeseries for a single puff.
     Inputs:
         q: Total emission corresponding to this puff (kg)
-        ws, wd: wind speed (m/s) and wind direction (degrees)
-        x0, y0, z0: coordinates to the source (m)
-        stability_class: char in A-F from Pasquill stability classes
-        times: time series the puff is live for
+        ws, wd: wind speed (m/s) and wind direction (radians)
+        hour: current hour of day (int)
         ch4: 2D concentration array. First index is time, second index is the flattened spatial index.
     Returns:
         None. The concentration is added directly into the ch4 array in GaussianPuffEquation()
@@ -713,20 +678,15 @@ public:
         Vector X_rot(X.size());
         Vector Y_rot(Y.size());
 
-        x0 = source_coordinates(0,0);
-        y0 = source_coordinates(0,1);
-        z0 = source_coordinates(0,2);
-
         // rotates X and Y grids, stores in X_rot and Y_rot
-        rotateGrids(x0, y0, z0, wd, X_rot, Y_rot);
+        rotateGrids(wd, X_rot, Y_rot);
 
         char stability_class = stabilityClassifier(ws, hour);
 
-        // gets sigma coefficients and stores in sigma_{y,z} member vars
+        // gets sigma coefficients and stores in sigma_{y,z} class member vars
         getSigmaCoefficients(stability_class, X_rot);
 
         GaussianPuffEquation(q, ws, wd,
-                                x0, y0, z0,
                                 X_rot, Y_rot,
                                 ch4);
     }
@@ -750,26 +710,16 @@ public:
 
             if(t+puff_duration >= ch4.rows()) puff_duration = ch4.rows()-t;
 
-            concentrationPerPuff(emission_per_puff, wind_directions[t], wind_speeds[t], 
+            double theta = windDirectionToAngle(wind_directions[t]);
+
+            concentrationPerPuff(emission_per_puff, theta, wind_speeds[t], 
                                     puff_start.tm_hour, ch4.middleRows(t, puff_duration));
 
-            if(floor(n_time_steps*report_ratio) == t){
+            if(!quiet && floor(n_time_steps*report_ratio) == t){
                 std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
                 report_ratio += 0.1;
             }
         }
-
-
-        // ch4(Eigen::seq(t,Eigen::last), Eigen::all)
-
-
-        // later: loop over sources
-            // set source coords
-
-            // n_emissions = length(emission_times)
-            // set up loop to have (emission_end-emission_start)/sim_dt time steps
-            // call concentration per puff w those parameters
-
     }
 
 private:
@@ -778,6 +728,9 @@ private:
         x0 = source_coordinates(source_index, 0);
         y0 = source_coordinates(source_index, 1);
         z0 = source_coordinates(source_index, 2);
+
+        x_min = X.minCoeff() - x0;
+        y_min = Y.minCoeff() - y0;
     }
 
     // convert wind direction (degrees) to the angle (radians) between the wind vector and positive x-axis
@@ -816,14 +769,12 @@ PYBIND11_MODULE(CGaussianPuff, m) {
     py::class_<CGaussianPuff>(m, "CGaussianPuff")
     .def(py::init<Vector, Vector, Vector, int, int, int, int, int, int, 
                     TimePoint, TimePoint, 
-                    Vector, Vector, Matrix, Vector, double, double>())
-    .def("simulate", &CGaussianPuff::simulate)
-    .def("GaussianPuffEquation", &CGaussianPuff::GaussianPuffEquation)
-    .def("rotateGrids", &CGaussianPuff::rotateGrids)
-    .def("concentrationPerPuff", &CGaussianPuff::concentrationPerPuff)
-    .def("getSigmaCoefficients", &CGaussianPuff::getSigmaCoefficients);
+                    Vector, Vector, Matrix, Vector, double, double, bool>())
+    .def("simulate", &CGaussianPuff::simulate);
 
-    // py::class_<CGaussianPuff>(m, "CGaussianPuff").def(py::init());
-    // def("GaussianPuffEquation", &GaussianPuffEquation, "evaluate gaussian puff equation"),
-    // def("getDownwindCoordinates", &get_downwind_coordinates, "gets rotated grids");
+    // .def("simulate", &CGaussianPuff::simulate)
+    // .def("GaussianPuffEquation", &CGaussianPuff::GaussianPuffEquation)
+    // .def("rotateGrids", &CGaussianPuff::rotateGrids)
+    // .def("concentrationPerPuff", &CGaussianPuff::concentrationPerPuff)
+    // .def("getSigmaCoefficients", &CGaussianPuff::getSigmaCoefficients);
 }

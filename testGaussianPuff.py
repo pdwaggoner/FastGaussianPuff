@@ -9,38 +9,29 @@ Created on Mon Oct 10 11:20:41 2022
 """
 
 #%% Imports
-from platform import python_branch
 import pandas as pd
-import matplotlib.pyplot as plt
-import datetime
-import multiprocessing as mp
-import random
 import numpy as np
 import time
 # import my own utility functions
 import sys
 utility_dir = './'
 sys.path.insert(0, utility_dir)
-from utilities import wind_synthesizer, wrapper_run_puff_simulation, combine_subexperiments
-from GaussianPuff import GAUSSIANPUFF
+from utilities import wind_synthesizer
 bin_dir = './bin'
 sys.path.insert(0, bin_dir)
-from vectorizedGaussianPuff import vectorizedGAUSSIANPUFF
+from GaussianPuff import GaussianPuff as GP
 
 
 
 #%% 
 # Load in data
-# specify paths
 data_dir = './data/clean_data/'
 simulation_data_dir = './puff_results/'
 plot_save_dir = './puff_plots/'
 
-# 1-minute-resolution cm data
-df_ch4_1min = pd.read_csv(data_dir + 'df_ch4_1min_METEC_ADET.csv',) 
+# 1-minute resolution wind data
 df_ws_1min = pd.read_csv(data_dir + 'df_ws_1min_METEC_ADET.csv') 
 df_wd_1min = pd.read_csv(data_dir + 'df_wd_1min_METEC_ADET.csv')
-df_ch4_1min['time_stamp.mountain'] = pd.to_datetime(df_ch4_1min['time_stamp.mountain'])
 df_ws_1min['time_stamp.mountain'] = pd.to_datetime(df_ws_1min['time_stamp.mountain'])
 df_wd_1min['time_stamp.mountain'] = pd.to_datetime(df_wd_1min['time_stamp.mountain'])
 
@@ -50,11 +41,6 @@ df_experiment = pd.read_csv(data_dir + 'df_exp_METEC_ADET.csv')
 df_experiment['start_time.mountain'] = pd.to_datetime(df_experiment['start_time.mountain'])
 df_experiment['end_time.mountain'] = pd.to_datetime(df_experiment['end_time.mountain'])
 
-# location data
-df_source_locs = pd.read_csv(data_dir + 'df_source_locs_METEC_ADET.csv')
-df_sensor_locs = pd.read_csv(data_dir + 'df_sensor_locs_METEC_ADET.csv')
-
-#%% Data processing
 # Data processing
 # column names used in the load in dfs
 colnames = {'name' : 'name', 
@@ -67,11 +53,7 @@ colnames = {'name' : 'name',
     'exp_t_end' : 'end_time.mountain', 
 'emission_rate' : 'emission_rate.kg/hr'}
 
-# ch4 data
-ch4_obs_all = df_ch4_1min.loc[:, df_ch4_1min.columns!=colnames['t']].to_numpy()
-time_stamp_ch4 = df_ch4_1min[colnames['t']].to_list()
-
-# synethize wind data
+# synethize wind data- combines wind data from multiple sensors into one timeseries
 if df_ws_1min.shape == df_wd_1min.shape:
     wind_syn_mode, wind_sensor = 'circular_mean', None
     ws_syn, wd_syn = wind_synthesizer(df_ws_1min, df_wd_1min, 
@@ -84,7 +66,6 @@ else:
 
 
 # select experiments
-
 # source: 4T-11
 start_1 = '2022-02-22 01:33:22'
 end_1 = '2022-02-22 03:33:23'
@@ -100,12 +81,14 @@ end_3 = '2022-04-27 08:05:00'
 starts = [start_1, start_2, start_3]
 ends = [end_1, end_2, end_3]
 
-num_tests = len(starts)
+num_tests = 0
 tests_passed = 0
 tests_failed = 0
 failed_tests = []
 
 for i in range(0, len(starts)):
+
+    num_tests += 1
 
     exp_start_time = starts[i]
     exp_end_time = ends[i]
@@ -116,9 +99,6 @@ for i in range(0, len(starts)):
 
     # set simulation parameters
     obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
-    quiet = False 
-
-    exp_run_start_time = datetime.datetime.now() # log run time
 
     # initialize result containers
     exp_id_list, puff_list = [], []
@@ -134,90 +114,72 @@ for i in range(0, len(starts)):
         ## floor t_0 and t_end to the nearest minute
         t_0 = t_0.floor('T')
         t_end = t_end.floor('T')
-        
+
         ## extract inputs to the puff model
         idx_0 = pd.Index(time_stamp_wind).get_indexer([t_0], method='nearest')[0]
         idx_end = pd.Index(time_stamp_wind).get_indexer([t_end], method='nearest')[0]
-        time_stamps = time_stamp_wind[idx_0 : idx_end+1]
-        source_names = [source_name] * len(time_stamps)
-        emission_rates = [emission_rate] * len(time_stamps)
         wind_speeds = ws_syn[idx_0 : idx_end+1]
         wind_directions = wd_syn[idx_0 : idx_end+1]
-        
-        # initialize GAUSSIANPUFF class objects
-        # puff = GAUSSIANPUFF(time_stamps, 
-        #                     source_names, emission_rates, 
-        #                     wind_speeds, wind_directions,
-        #                     obs_dt, sim_dt, puff_dt, 
-        #                     df_sensor_locs, df_source_locs,
-        #                     quiet=False,
-        #                     model_id = index
-        #                     )
         
         x_num = 20
         y_num = 20
         z_num = 20
 
-        vect_puff = vectorizedGAUSSIANPUFF(time_stamps, 
-                                        source_names, emission_rates, 
-                                        wind_speeds, wind_directions, 
+
+        grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
+        if i == 0:
+            source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
+            emission_rate = [1.953021587640098]
+        elif i == 1:
+            source_coordinates = [[488206.3525776105, 4493911.77819326, 2.0]]
+            emission_rate = [0.8436203738042646]
+        elif i == 2:
+            source_coordinates = [[488124.41821990383, 4493915.016403197, 2.0]]
+            emission_rate = [0.5917636636467585]
+
+        grid_puff = GP(wind_speeds, wind_directions, 
                                         obs_dt, sim_dt, puff_dt,
-                                        df_sensor_locs, df_source_locs,
+                                        t_0, t_end,
+                                        source_coordinates,
+                                        emission_rate,
+                                        grid_coordinates=grid_coords,
                                         using_sensors=False,
                                         nx=x_num, ny=y_num, nz=z_num,
                                         quiet=False
         )
 
-        # lie to the old code to make it run on a grid instead of sensors
-        # N_points = vect_puff.N_points
-        # puff.x_sensor = vect_puff.X.ravel()
-        # puff.y_sensor = vect_puff.Y.ravel()
-        # puff.z_sensor = vect_puff.Z.ravel()
-        # puff.N_sensor = N_points
-        # puff.ch4_sim = np.zeros((puff.N_t_sim, vect_puff.N_points))
-        # puff.ch4_sim_res = np.zeros((puff.N_t_obs, vect_puff.N_points))
+        start = time.time()
+        ch4_vect = grid_puff.simulation()
+        end = time.time()
 
-        vect_start = time.time()
-        ch4_vect = vect_puff.simulation()
-        vect_end = time.time()
+        runtime = end-start
+        print("runtime: ", runtime)
+        print(f"simulation length (real time): {grid_puff.n_obs} minutes")
 
-        vect_time = vect_end-vect_start
-        print("new runtime: ", vect_time)
-        print(f"simulation length: {vect_puff.n_obs} minutes")
-
-        # IF RUNNING TESTS FREQUENTLY: Save the array created using the original GP
-        # model using np.save and load it in using np.load (as below)
-
-        # puff_start = time.time()
-        # ch4 = puff.simulation()
-        # puff_end = time.time()
-
-        # puff_time = puff_end-puff_start
-        # print("old runtime: ", puff_end-puff_start)
-
+        # compare to ground truth, generated using original code
         test_data_dir = "./data/test_data/"
         start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
-        filename = test_data_dir + "ch4-n-" + str(vect_puff.N_points) + "-exp-" + start_time_str + ".csv"
-        # np.savetxt(filename, ch4, delimiter=",")
+        filename = test_data_dir + "ch4-n-" + str(grid_puff.N_points) + "-exp-" + start_time_str + ".csv"
         ch4 = np.loadtxt(filename, delimiter=",")
 
         passed = True
         tol = 10e-6 # float32 precision is what the code originally used, so this is slightly larger than that
-        for t in range(0, len(ch4)):
+        # stop one step short of end: original code doesn't actually produce results for final time, so skip it
+        for t in range(0, len(ch4)-1):
 
             if np.linalg.norm(ch4[t]) < 10e-3: # ppb measurements are so small we don't care about relative error
                 norm = abs(np.linalg.norm(ch4[t].ravel() - ch4_vect[t].ravel()))
             else:
                 norm = abs(np.linalg.norm(ch4[t].ravel() - ch4_vect[t].ravel())) / (np.linalg.norm(ch4[t].ravel()) + tol)
 
-            # if np.shape(ch4_vect[t]) != vect_puff.grid_dims:
-            #     print(f"ERROR: CH4 ARRAY AT TIME {t} IS WRONG SHAPE")
-            #     tests_failed += 1
+            if np.shape(ch4_vect[t]) != grid_puff.grid_dims:
+                print(f"ERROR: CH4 ARRAY AT TIME {t} IS WRONG SHAPE")
+                tests_failed += 1
 
-            # if np.isnan(norm):
-            #     print(f"ERROR: NAN present in vectorized ch4 array at time {t}")
-            #     if not passed:
-            #         passed = False
+            if np.isnan(norm):
+                print(f"ERROR: NAN present in vectorized ch4 array at time {t}")
+                if not passed:
+                    passed = False
             if norm > tol: # doesn't work if there are NAN's
                 print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
 
@@ -229,6 +191,7 @@ for i in range(0, len(starts)):
         if not passed:
             print(f"Test {i+1} failed")
             tests_failed += 1
+            failed_tests.append(i+1)
 
         else:
             print(f"Test {i+1} passed")
