@@ -175,23 +175,6 @@ class GaussianPuff:
 
         # saves the resolution the wind data was resampled to so we can resample back to obs_dt at the end
         self.time_stamps_resampled = wind_df.index.to_list()
-
-    def _extract_source_location(self, source_name):
-        '''
-        Find the coordinates for a given source
-        Inputs:
-            source_name (str): 
-                the name of the given source
-        Outputs:
-            x0, y0, z0 [m] (scalars): 
-                coordinate of the source
-        '''
-        idx = self.source_names.index(source_name)
-        x0 = self.x_source[idx]
-        y0 = self.y_source[idx]
-        z0 = self.z_source[idx]
-        
-        return x0, y0, z0
     
     def _wind_vector_convert(self, input_1, input_2, direction = 'ws_wd_2_u_v'):
         '''
@@ -235,110 +218,6 @@ class GaussianPuff:
             raise NotImplementedError(">>>>> wind vector conversion direction")
         
         return output_1, output_2
-    
-    def _get_downwind_coordinates(self, X, Y, x_0, y_0, wd):
-        '''
-        Convert coordinates from cardinal frame (east-north coordinate) to new frame 
-        whose origin will be (x_0, y_0) 
-        and whose positive x-axis be the down wind direction
-        Inputs:
-            X, Y, Z [m] (np.arrays, floats from np.meshgrid, size = (y.num, x.num, z.num)): 
-                coordinates of grid points in the cardinal coordinates 
-            x_0, y_0 [m] (scalar, float): 
-                coordinate of the origin (source location) in the cardinal coordinates
-            wd [degree] (scalar, float):  
-                wind direction 
-                (wd = 0, 90, 180, 270 <=> wind blowing from N, E, S, W, respectively)
-        Outputs: 
-            X_rot, Y_rot, Z [m] (np.arrays, floats from np.meshgrid): 
-                coordinates of grid points in the new frame 
-        '''
-
-        # translation
-        X_trans = X - x_0
-        Y_trans = Y - y_0
-
-        # rotation
-        theta = 270 - wd 
-        theta = theta + 360 if theta < 0 else theta
-        theta = np.deg2rad(theta)
-
-        R = np.array(((np.cos(theta), np.sin(theta)), 
-                    (-np.sin(theta), np.cos(theta)))) # rotation matrix in x-y plane
-
-        rotated = np.matmul(R, np.vstack([X_trans, Y_trans]))
-
-        return rotated[0], rotated[1] # rotated versions of the flattened X and Y grids
-
-    def _is_day(self, hour, day_range=(7, 19)):
-        '''
-        Determine if it is day hour or not.
-        Inputs:
-            hour (scalar, int): 
-                a number between 0 - 23
-            day_range (tuple of int): 
-                a range to define day hours
-        Output:
-            (boolean): True if it is a day hour, False otherwise 
-        '''
-        if hour >= day_range[0] and hour <= day_range[1]:
-            return True
-        else:
-            return False
-
-    def _stability_classifier(self, wind_speed, hour):
-        '''
-        Determine the stability class based on Pasquill table (a reduced version)
-        Inputs:
-            wind_speed [m/s] (scalar, float): 
-                wind speed
-            hour (scalar, int): 
-                hour of a day, a number between 0 and 23
-        Outputs:
-            stability_class (str): 
-                stability class, a str from A-F
-        '''
-        is_day = self._is_day(hour)
-        if wind_speed < 2:
-            stability_class = "A" if is_day else "E"
-        elif wind_speed >= 2 and wind_speed < 5:
-            stability_class = "B" if is_day else "E"
-        else:
-            stability_class = "D"
-        return stability_class
-  
-    # def _concentration_per_puff(self, t_0):
-    #     '''
-    #     Compute the concentration time series for a single puff created at t_0
-    #     Inputs:
-    #         t_0 (scalar, pd.DateTime value): 
-    #             starting time of the puff
-    #     Outputs: 
-    #         None. Instead, the concentration time series for the single puff is added
-    #         to the overall concentration time series ch4_sim inside of the gaussian_puff_equation call.
-    #     '''
-    #     # extract sub data in the given time window
-    #     t_end = t_0 + pd.Timedelta(self.puff_duration, 'S')
-    #     t_end = min(t_end, self.time_stamps_res[-1]) # make sure the end time does not overflow
-    #     idx_0, idx_end = self.time_stamps_res.index(t_0), self.time_stamps_res.index(t_end)
-    #     n_t = idx_end - idx_0
-    #     source_name = self.source_names_res[idx_0]
-    #     total_emission = self.emission_rates_res[idx_0] * self.puff_dt # quantity of emission for this puff
-    #     wind_speed = self.wind_speeds_res[idx_0]
-    #     wind_direction = self.wind_directions_res[idx_0]
-        
-    #     if source_name == 'None':
-    #         return # No emission ocurrs and hence no concentration
-    #     elif n_t == 0:
-    #         return # No time steps so no concentration to compute (happens at end of time block)    
-    #     else:
-
-
-    #         self.GPC.concentrationPerPuff(total_emission, wind_direction, wind_speed,
-    #                             t_0.hour,
-    #                             self.ch4_sim[idx_0:idx_end])
-
-
 
     def _model_info_print(self):
         '''

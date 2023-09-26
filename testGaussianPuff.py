@@ -125,6 +125,8 @@ for i in range(0, len(starts)):
         y_num = 20
         z_num = 20
 
+        puff_duration = 1080 # used in the original python code
+
 
         grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
         if i == 0:
@@ -145,7 +147,8 @@ for i in range(0, len(starts)):
                                         grid_coordinates=grid_coords,
                                         using_sensors=False,
                                         nx=x_num, ny=y_num, nz=z_num,
-                                        quiet=False
+                                        quiet=False,
+                                        puff_duration=puff_duration
         )
 
         start = time.time()
