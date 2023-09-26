@@ -16,7 +16,6 @@ for i=1:t
     c = dat(i, :);
 
     s = ones(n,n,n);
-    color = flipud(ember);
 
     alpha = c;
     ind = c<1;
