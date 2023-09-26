@@ -60,82 +60,63 @@ else:
 
 
 
-# select experiments
-# source: 4T-11
-start = '2022-02-22 01:33:22'
-end = '2022-02-22 03:33:23'
-
-df_experiment_sub = \
-df_experiment.loc[ ( df_experiment['start_time.mountain'] >= pd.to_datetime(start) ) &
-                ( df_experiment['start_time.mountain'] <= pd.to_datetime(end) ) ].reset_index(drop = True)
 
 
-### all of the above is code that just reads in some wind data. 
-
-
-# set simulation parameters
-# IMPORTANT: obs_dt must be a positive integer multiple of sim_dt, and sim_dt must be an integer
-obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
-
+############### all of the above is code that just reads in some wind data ##################
 
 # IMPORTANT: the wind data is on 1min resolution, so obs_dt = 60 seconds
 # the wind data gets resampled to sim_dt when the constructor for the python code is called.
 
 
-# initialize result containers
-exp_id_list, puff_list = [], []
+# set simulation parameters
+# IMPORTANT: obs_dt must be a positive integer multiple of sim_dt, and both sim_dt and puff_dt must be an integer
+obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
 
-# initialize puffs corresponding to each experiment
-for index, row in df_experiment_sub.iterrows():
-    exp_id, source_name, t_0, t_end, emission_rate = row[[colnames['exp_id'],
-                                                        colnames['name'], 
-                                                        colnames['exp_t_0'],
-                                                        colnames['exp_t_end'],
-                                                        colnames['emission_rate']]]
-    
-    ## floor t_0 and t_end to the nearest minute
-    t_0 = t_0.floor('T')
-    t_end = t_end.floor('T')
+# start and end times at minute resolution. Needs to be in the local timezone of where we're simulating
+# e.g. if we're simulating a site in England, it needs to be in UTC.
+# if we're simulating a site in Colorado, it should be in MST/MDT
+start = pd.to_datetime('2022-02-22 01:33:22') # source: 4T-11
+end = pd.to_datetime('2022-02-22 03:33:23')
 
-    start = pd.to_datetime(start)
-    end = pd.to_datetime(end)
 
-    ## extract inputs to the puff model
-    idx_0 = pd.Index(time_stamp_wind).get_indexer([t_0], method='nearest')[0]
-    idx_end = pd.Index(time_stamp_wind).get_indexer([t_end], method='nearest')[0]
-    wind_speeds = ws_syn[idx_0 : idx_end+1]
-    wind_directions = wd_syn[idx_0 : idx_end+1]
-    
-    x_num = 20
-    y_num = 20
-    z_num = 20
+## extract wind data corresponding to start and end times
+idx_0 = pd.Index(time_stamp_wind).get_indexer([start], method='nearest')[0]
+idx_end = pd.Index(time_stamp_wind).get_indexer([end], method='nearest')[0]
+wind_speeds = ws_syn[idx_0 : idx_end+1]
+wind_directions = wd_syn[idx_0 : idx_end+1]
 
-    grid_coords = [-100, -80, 0, 100, 80, 24.0] # format is (x_min, y_min, z_min, x_max, y_max, z_max) in [m]
-    
-    # format is [[x0,y0,z0]] in [m]. needs to be nested list for compatability with multi source (coming soon)
-    source_coordinates = [[10, 20, 4.5]]
-    emission_rate = [3] # emission rate for the single source above, [kg/hr]
+# number of grid points
+x_num = 20
+y_num = 20
+z_num = 20
 
-    grid_puff = GP(wind_speeds, wind_directions, 
-                                    obs_dt, sim_dt, puff_dt,
-                                    start, end,
-                                    source_coordinates,
-                                    emission_rate,
-                                    grid_coordinates=grid_coords,
-                                    using_sensors=False,
-                                    nx=x_num, ny=y_num, nz=z_num,
-                                    quiet=False
-    )
+# grid corner coordinates
+grid_coords = [-100, -80, 0, 100, 80, 24.0] # format is (x_min, y_min, z_min, x_max, y_max, z_max) in [m]
 
-    grid_puff.simulate()
 
-    temp = []
+# location and emission rate for emitting source
+source_coordinates = [[10, 20, 4.5]] # format is [[x0,y0,z0]] in [m]. needs to be nested list for compatability with multi source (coming soon)
+emission_rate = [3] # emission rate for the single source above, [kg/hr]
 
-    # flatten the concentration array for easier handling in matlab
-    for i in range(grid_puff.n_obs):
-        temp.append(grid_puff.ch4_obs[i].ravel())
+grid_puff = GP(obs_dt, sim_dt, puff_dt,
+                start, end,
+                source_coordinates, emission_rate,
+                wind_speeds, wind_directions, 
+                grid_coordinates=grid_coords,
+                nx=x_num, ny=y_num, nz=z_num,
+                quiet=False
+)
 
-    np.savetxt("concentration.csv", temp)
-    np.savetxt("X.csv", grid_puff.X)
-    np.savetxt("Y.csv", grid_puff.Y)
-    np.savetxt("Z.csv", grid_puff.Z)
+grid_puff.simulate()
+
+temp = []
+
+# flatten the concentration array for easier handling in matlab
+for i in range(grid_puff.n_obs):
+    temp.append(grid_puff.ch4_obs[i].ravel())
+
+# save all data for matlab (visualization.m script)
+np.savetxt("concentration.csv", temp)
+np.savetxt("X.csv", grid_puff.X)
+np.savetxt("Y.csv", grid_puff.Y)
+np.savetxt("Z.csv", grid_puff.Z)
