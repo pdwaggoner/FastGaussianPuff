@@ -13,11 +13,10 @@ import CGaussianPuff as C_GP
 
 class GaussianPuff:
     def __init__(self,
-                 wind_speeds, wind_directions,
                  obs_dt, sim_dt, puff_dt, 
                  simulation_start, simulation_end,
-                 source_coordinates,
-                 emission_rates,
+                 source_coordinates, emission_rates,
+                 wind_speeds, wind_directions,
                  grid_coordinates=None,
                  nx=None, ny=None, nz=None,
                  using_sensors=False,
@@ -44,6 +43,7 @@ class GaussianPuff:
                 time interval (dt) between two successive puffs' creation
             simulation_start, simulation_end (pd.DateTime values)
                 start and end times for the emission to be simulated.
+                NOTE: should be a minute resolution.
             source_coordinates (array, size=(n_sources, 3)) [m]:
                 holds source coordinates in (x,y,z) format in meters for each source.
             emission_rates: (array, length=n_sources) [kg/hr]:
@@ -65,9 +65,13 @@ class GaussianPuff:
             quiet (boolean): 
                 if output progress information while running or not
         '''
+
+        self._verify_inputs(sim_dt, puff_dt, obs_dt)
+
         self.obs_dt = obs_dt 
         self.sim_dt = sim_dt 
         self.puff_dt = puff_dt
+
 
         self.sim_start = simulation_start
         self.sim_end = simulation_end
@@ -137,6 +141,22 @@ class GaussianPuff:
         # initialize the final simulated concentration array
         self.ch4_sim = np.zeros((self.n_sim, self.N_points)) # simulation in sim_dt resolution, flattened
         self.ch4_obs =  np.zeros((self.n_obs, *self.grid_dims)) # simulation resampled to obs_dt resolution
+
+    def _verify_inputs(self, sim_dt, puff_dt, obs_dt):
+
+        if not isinstance(sim_dt, int) or sim_dt <= 0:
+            print("ERROR IN INITIALIZATION: sim_dt must be a positive integer value")
+            exit(-1)
+
+        if not isinstance(puff_dt, int) or puff_dt <= 0:
+            print("ERROR IN INITIALIZATION: puff_dt must be a positive integer value")
+            exit(-1)
+
+        if obs_dt % sim_dt != 0:
+            print("ERROR IN INITIALIZATION: obs_dt must be a positive integer multiple of sim_dt")
+            exit(-1)
+
+
 
     def _interpolate_wind_data(self, wind_speeds, wind_directions, sim_dt, sim_start, sim_end):
         '''
