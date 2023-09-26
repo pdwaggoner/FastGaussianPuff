@@ -1,0 +1,2 @@
+# ignore compiled shared object files
+*.so
