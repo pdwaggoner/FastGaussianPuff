@@ -65,9 +65,18 @@ public:
     Inputs:
         X, Y, Z: Flattened versions of 3D meshgrids
         nx, ny, nz: number of points in each direction
+        sim_dt: time between simulation time steps (MUST BE INTEGER NUMBER OF SECONDS)
+        puff_dt: time between creation of two puffs
+        puff_duration: maximum number of seconds puff can be live for. The default is no threshold, since the code
+            computes the correct cutoff time. Only add a puff duration if you need faster runtimes at the expense of accuracy.
+        sim_start, sim_end: datetime stamps for when to start and end the emission
+        wind_speeds, wind_directions: timeseries for wind speeds (m/s) and directions (degrees) at sim_dt resolution
+        source_coordinates: source coordinates in (x,y,z) format for each source. size- (n_sources, 3)
+        emission_strengths: emission rates for each source (kg/hr). length: n_sources
         conversion_factor: conversion between kg/m^3 to ppm for ch4
         exp_tol: tolerance for the exponential thresholding applied to the Gaussians. Lower tolerance means less accuracy
         but a faster execution. Runtime and accuracy are both very sensitive to this parameter.
+        quiet: false if you want output for simulation completeness. true for silent simulation.
     */
     CGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int nx, int ny, int nz, 
@@ -116,7 +125,6 @@ public:
             dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
         ws, wd: wind speed (m/s) and direction (radians)
         t_i: time step (s)
-        x0, y0, z0: coordinates of source (m)
 
     Returns:
         A vector of six doubles containing the lower and upper bounds on the i, j, and k indices. Note that these are
@@ -372,6 +380,13 @@ public:
         return travelTime;
     }
 
+    /* Computes Pasquill stability class
+    Inputs:
+        wind_speed: [m/s]
+        hour: current hour of day
+    Returns:
+        stability_class: character A-F representing a Pasquill stability class
+    */
     char stabilityClassifier(double wind_speed, int hour, int day_start=7, int day_end=19) {
         bool is_day = (hour >= day_start) && (hour <= day_end);
         char stability_class;
@@ -691,6 +706,12 @@ public:
                                 ch4);
     }
 
+    /* Simulation time loop
+    Inputs:
+        ch4: 2d array. First index represents simulation time steps, second index is flattened spatial index
+    Returns:
+        none, but the concentration is added directly to the ch4 array for all time steps
+    */
     void simulate(RefMatrix ch4){
 
         double emission_length = difftime(sim_end, sim_start);
@@ -699,19 +720,23 @@ public:
         // later, for multisource: iterate over source coords
         setSourceCoordinates(0);
         double q = emission_strengths[0]/3600; // convert to kg/s
+
         double emission_per_puff = q*puff_dt;
 
         time_t current_time = sim_start;
         double report_ratio = 0.1;
         for(int t = 0; t < n_time_steps; t++){
-
+            
+            // keeps track of current time. needed to compute stability class
             tm puff_start = *localtime(&current_time);
             current_time += puff_dt;
 
+            // bounds check on time
             if(t+puff_duration >= ch4.rows()) puff_duration = ch4.rows()-t;
 
             double theta = windDirectionToAngle(wind_directions[t]);
 
+            // computes concentration timeseries for this puff
             concentrationPerPuff(emission_per_puff, theta, wind_speeds[t], 
                                     puff_start.tm_hour, ch4.middleRows(t, puff_duration));
 
