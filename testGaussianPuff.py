@@ -25,7 +25,7 @@ from GaussianPuff import GaussianPuff as GP
 
 #%% 
 # Load in data
-data_dir = './data/clean_data/'
+data_dir = './data/demo_data/'
 simulation_data_dir = './puff_results/'
 plot_save_dir = './puff_plots/'
 
@@ -139,20 +139,19 @@ for i in range(0, len(starts)):
             source_coordinates = [[488124.41821990383, 4493915.016403197, 2.0]]
             emission_rate = [0.5917636636467585]
 
-        grid_puff = GP(wind_speeds, wind_directions, 
-                                        obs_dt, sim_dt, puff_dt,
-                                        t_0, t_end,
-                                        source_coordinates,
-                                        emission_rate,
-                                        grid_coordinates=grid_coords,
-                                        using_sensors=False,
-                                        nx=x_num, ny=y_num, nz=z_num,
-                                        quiet=False,
-                                        puff_duration=puff_duration
+        grid_puff = GP(obs_dt, sim_dt, puff_dt,
+                        t_0, t_end,
+                        source_coordinates, emission_rate,
+                        wind_speeds, wind_directions, 
+                        grid_coordinates=grid_coords,
+                        using_sensors=False,
+                        nx=x_num, ny=y_num, nz=z_num,
+                        quiet=False,
+                        puff_duration=puff_duration
         )
 
         start = time.time()
-        ch4_vect = grid_puff.simulation()
+        ch4_vect = grid_puff.simulate()
         end = time.time()
 
         runtime = end-start
