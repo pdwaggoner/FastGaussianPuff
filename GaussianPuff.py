@@ -3,7 +3,7 @@
 """
 Created on Wed Sep 21 15:59:36 2022
 
-@author: mengjia
+@author: mengjia, rykerfish
 """
 import numpy as np
 import pandas as pd
@@ -136,7 +136,7 @@ class GaussianPuff:
 
         # initialize the final simulated concentration array
         self.ch4_sim = np.zeros((self.n_sim, self.N_points)) # simulation in sim_dt resolution, flattened
-        self.ch4_sim_res =  np.zeros((self.n_obs, *self.grid_dims)) # simulation resampled to obs_dt resolution
+        self.ch4_obs =  np.zeros((self.n_obs, *self.grid_dims)) # simulation resampled to obs_dt resolution
 
     def _interpolate_wind_data(self, wind_speeds, wind_directions, sim_dt, sim_start, sim_end):
         '''
@@ -237,7 +237,7 @@ class GaussianPuff:
         else:
             print(f"         Running in grid mode with grid dimensions {self.grid_dims}")
         
-    def simulation(self):
+    def simulate(self):
         '''
         Main code for simulation
         Outputs:
@@ -250,7 +250,7 @@ class GaussianPuff:
         self.GPC.simulate(self.ch4_sim)
         
         # resample results to the obs_dt-resolution
-        self.ch4_sim_res = self._resample_simulation(self.ch4_sim, self.obs_dt)
+        self.ch4_obs = self._resample_simulation(self.ch4_sim, self.obs_dt)
         
         
         if self.quiet == False:
@@ -261,7 +261,7 @@ class GaussianPuff:
         else:
             print('*****************    PUFF SIMULATION END     ***************')
         
-        return self.ch4_sim_res
+        return self.ch4_obs
     
     def _resample_simulation(self, c_matrix, obs_dt, mode = 'mean'):
         '''

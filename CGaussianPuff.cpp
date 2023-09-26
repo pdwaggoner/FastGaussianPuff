@@ -24,16 +24,6 @@ typedef Eigen::Ref<Matrix, 0, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>> Ref
 typedef std::vector<std::vector<std::vector<int> > > vec3d;
 typedef std::chrono::system_clock::time_point TimePoint;
 
-
-struct timeval tv;
-struct timezone tz;
-double timeNow() {
-    gettimeofday( &tv, &tz );
-    int _mils = tv.tv_usec/1000;
-    int _secs = tv.tv_sec;
-    return (double)_secs + ((double)_mils/1000.0);
-}
-
 class CGaussianPuff{
 
 public:
