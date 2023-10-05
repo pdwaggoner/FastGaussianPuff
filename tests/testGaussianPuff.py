@@ -14,10 +14,10 @@ import numpy as np
 import time
 # import my own utility functions
 import sys
-utility_dir = './'
+utility_dir = '../'
 sys.path.insert(0, utility_dir)
 from utilities import wind_synthesizer
-bin_dir = './bin'
+bin_dir = '../bin'
 sys.path.insert(0, bin_dir)
 from GaussianPuff import GaussianPuff as GP
 
@@ -25,9 +25,7 @@ from GaussianPuff import GaussianPuff as GP
 
 #%% 
 # Load in data
-data_dir = './data/demo_data/'
-simulation_data_dir = './puff_results/'
-plot_save_dir = './puff_plots/'
+data_dir = '../data/demo_data/'
 
 # 1-minute resolution wind data
 df_ws_1min = pd.read_csv(data_dir + 'df_ws_1min_METEC_ADET.csv') 
@@ -159,7 +157,7 @@ for i in range(0, len(starts)):
         print(f"simulation length (real time): {grid_puff.n_obs} minutes")
 
         # compare to ground truth, generated using original code
-        test_data_dir = "./data/test_data/"
+        test_data_dir = "./test_data/"
         start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
         filename = test_data_dir + "ch4-n-" + str(grid_puff.N_points) + "-exp-" + start_time_str + ".csv"
         ch4 = np.loadtxt(filename, delimiter=",")
