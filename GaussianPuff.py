@@ -268,7 +268,7 @@ class GaussianPuff:
             self._model_info_print()
 
         self.GPC.simulate(self.ch4_sim)
-        
+
         # resample results to the obs_dt-resolution
         self.ch4_obs = self._resample_simulation(self.ch4_sim, self.obs_dt)
         

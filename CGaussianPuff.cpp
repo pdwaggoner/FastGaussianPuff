@@ -94,7 +94,7 @@ public:
         this->sim_end = std::chrono::system_clock::to_time_t(sim_end);
 
         // declares empty 3D vector of integers of size (nx, ny, nz)
-        vec3d map_table(nx, std::vector<std::vector<int>>(ny, std::vector<int>(nz)));
+        vec3d map_table(ny, std::vector<std::vector<int>>(nx, std::vector<int>(nz)));
 
         // precomputes the map from the 3D meshgrid index to the 1D raveled index.
         // precomputed because the divisions in map() are too expensive to do repeatedly. 
