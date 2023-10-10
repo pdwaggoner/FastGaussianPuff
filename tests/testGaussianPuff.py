@@ -3,16 +3,14 @@
 # -*- coding: utf-8 -*-
 
 """
-Created on Mon Oct 10 11:20:41 2022
-
-@author: mengjia
+@author: mengjia, rykerfish
 """
 
 #%% Imports
 import pandas as pd
 import numpy as np
 import time
-# import my own utility functions
+# import utility functions
 import sys
 utility_dir = '../'
 sys.path.insert(0, utility_dir)
@@ -159,7 +157,7 @@ for i in range(0, len(starts)):
         # compare to ground truth, generated using original code
         test_data_dir = "./test_data/"
         start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
-        filename = test_data_dir + "ch4-n-" + str(grid_puff.N_points) + "-exp-" + start_time_str + ".csv"
+        filename = test_data_dir + "ch4-n-" + str(grid_puff.N_points) + "-sim-" + str(sim_dt) + "-puff-" + str(puff_dt) + "-exp-" + start_time_str + ".csv"
         ch4 = np.loadtxt(filename, delimiter=",")
 
         passed = True
