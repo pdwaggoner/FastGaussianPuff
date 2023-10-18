@@ -39,7 +39,7 @@ failed_tests = []
 
 #%% 
 # Load in data
-data_dir = './test_data/demo_data/'
+data_dir = '../data/demo_data/'
 
 # 1-minute resolution wind data
 df_ws_1min = pd.read_csv(data_dir + 'df_ws_1min_METEC_ADET.csv') 
@@ -90,7 +90,7 @@ def runTest(exp_start, t_0, t_end,
                 grid_coordinates=grid_coords,
                 using_sensors=False,
                 nx=nx, ny=ny, nz=nz,
-                quiet=False,
+                quiet=True,
                 puff_duration=puff_duration,
     )
 
@@ -110,9 +110,8 @@ def check_test(ch4_old, ch4):
     passed = True
     tol = 10e-6 # float32 precision is what the code originally used, so this is slightly larger than that
     # stop one step short of end: original code doesn't actually produce results for final time, so skip it
-    print(np.linalg.norm(ch4[0].ravel()))
-    print(np.linalg.norm(ch4_old[0].ravel()))
-    print(np.linalg.norm(ch4[0].ravel()-ch4_old[0]))
+    # print(np.linalg.norm(ch4))
+    # print(np.linalg.norm(ch4_old))
     for t in range(0, len(ch4_old)-1):
 
         if np.linalg.norm(ch4_old[t]) < 10e-3: # ppb measurements are so small we don't care about relative error
@@ -125,12 +124,13 @@ def check_test(ch4_old, ch4):
             if passed:
                 passed = False
         if norm > tol: # doesn't work if there are NAN's
-            print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
-            print("TIME: ", t)
-            print("NORM: ", norm)
+            # print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
+            # print("TIME: ", t)
+            # print("NORM: ", norm)
 
             if passed:
                 passed = False
+                print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
 
     return passed
 
@@ -181,6 +181,10 @@ def general_tests():
     ################ TEST 2 ######################
     num_tests += 1
 
+    x_num = 20
+    y_num = 20
+    z_num = 20
+
     source_coordinates = [[488206.3525776105, 4493911.77819326, 2.0]]
     emission_rate = [0.8436203738042646]
 
@@ -211,6 +215,10 @@ def general_tests():
     ################ TEST 3 ######################
     num_tests += 1
 
+    x_num = 20
+    y_num = 20
+    z_num = 20
+
     source_coordinates = [[488124.41821990383, 4493915.016403197, 2.0]]
     emission_rate = [0.5917636636467585]
 
@@ -240,20 +248,21 @@ def general_tests():
 
 def non_square_tests():
     ################## NON_SQUARE GRID TESTS ###################
-
-    x_num = 10
-    y_num = 15
-    z_num = 5
+    global num_tests
+    global tests_passed, tests_failed, failed_tests
 
     puff_duration = 1080 # used in the original python code
 
     obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
     grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
-
+    
     ################ TEST 1 ######################
-    global num_tests
-    global tests_passed, tests_failed, failed_tests
     num_tests += 1
+
+    # 400
+    x_num = 10
+    y_num = 5
+    z_num = 8
 
     source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
     emission_rate = [1.953021587640098]
@@ -274,22 +283,66 @@ def non_square_tests():
     passed = runTest(start_1, t_0, t_end, wind_speeds, wind_directions, 
                     obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
                     source_coordinates, emission_rate, grid_coords, puff_duration)
+    
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
 
+    ################ TEST 2 ######################
+    num_tests += 1
+
+    # 816
+    x_num = 12
+    y_num = 17
+    z_num = 4
+
+    source_coordinates = [[488206.3525776105, 4493911.77819326, 2.0]]
+    emission_rate = [0.8436203738042646]
+
+    exp_start = pd.to_datetime(start_2)
+    exp_end = pd.to_datetime(end_2)
+
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
+
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runTest(start_2, t_0, t_end, wind_speeds, wind_directions, 
+                    obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
+                    source_coordinates, emission_rate, grid_coords, puff_duration)
+    
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
 
 def varying_timestep_tests():
-    x_num = 50
-    y_num = 50
-    z_num = 50
+
+    global num_tests
+    global tests_passed, tests_failed, failed_tests
 
     puff_duration = 1080 # used in the original python code
 
-    obs_dt, sim_dt, puff_dt = 60, 10, 60 # [seconds]
     grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
 
     ################ TEST 1 ######################
-    global num_tests
-    global tests_passed, tests_failed, failed_tests
     num_tests += 1
+
+    x_num = 20
+    y_num = 20
+    z_num = 20
+
+    obs_dt, sim_dt, puff_dt = 60, 10, 60 # [seconds]
 
     source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
     emission_rate = [1.953021587640098]
@@ -318,12 +371,18 @@ def varying_timestep_tests():
         print ("Test " + str(num_tests) + " passed")
         tests_passed += 1
 
-
-    ################ TEST 2 ######################
+  ################ TEST 2 ######################
     num_tests += 1
 
-    source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
-    emission_rate = [1.953021587640098]
+    # 1620
+    x_num = 15
+    y_num = 12
+    z_num = 9
+
+    obs_dt, sim_dt, puff_dt = 60, 5, 30 # [seconds]
+
+    source_coordinates = [[488206.3525776105, 4493911.77819326, 2.0]]
+    emission_rate = [0.8436203738042646]
 
     exp_start = pd.to_datetime(start_2)
     exp_end = pd.to_datetime(end_2)
@@ -349,10 +408,15 @@ def varying_timestep_tests():
         print ("Test " + str(num_tests) + " passed")
         tests_passed += 1
 
+    return
 
 
-# general_tests()
-# non_square_tests()
+
+print("RUNNING GENERAL TESTS")
+general_tests()
+print("RUNNING NON-SQUARE TESTS")
+non_square_tests()
+print("RUNNING TIMESTEP TESTS")
 varying_timestep_tests()
 
 
