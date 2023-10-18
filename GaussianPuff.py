@@ -82,8 +82,11 @@ class GaussianPuff:
         self.n_obs = floor(ns/obs_dt) # number of observed data points we have
 
         # resample the wind data from obs_dt to the simulation resolution sim_dt
-        self._interpolate_wind_data(wind_speeds, wind_directions, sim_dt, simulation_start, simulation_end)
-        self.n_sim = len(self.time_stamps_resampled) # number of simulation time steps
+        self._interpolate_wind_data(wind_speeds, wind_directions, puff_dt, simulation_start, simulation_end)
+
+        # save timeseries of simulation resolution so we can resample back to observation later
+        self.time_stamps_sim = pd.date_range(self.sim_start, self.sim_end, freq=str(self.sim_dt)+"S")
+        self.n_sim = len(self.time_stamps_sim) # number of simulation time steps
 
         # by default, don't have puff duration since the C code computes the correct time cutoff for each sim
         # if a puff default is set, you'll loose accuracy on puffs that remain on the grid for a long time
@@ -156,9 +159,12 @@ class GaussianPuff:
             print("ERROR IN INITIALIZATION: obs_dt must be a positive integer multiple of sim_dt")
             exit(-1)
 
+        if puff_dt % sim_dt != 0:
+            print("ERROR IN INITIALIZATION: sim_dt must be a positive integer multiple of puff_dt")
 
 
-    def _interpolate_wind_data(self, wind_speeds, wind_directions, sim_dt, sim_start, sim_end):
+
+    def _interpolate_wind_data(self, wind_speeds, wind_directions, puff_dt, sim_start, sim_end):
         '''
         Resample wind_speeds and wind_directions to the simulation resolution by interpolation.
         Inputs:
@@ -187,15 +193,12 @@ class GaussianPuff:
                                     'wind_v' : wind_v}, 
                             index = time_stamps)
         
-        wind_df = wind_df.resample(str(sim_dt)+'S').interpolate()
+        wind_df = wind_df.resample(str(puff_dt)+'S').interpolate()
         wind_u = wind_df['wind_u'].to_list()
         wind_v = wind_df['wind_v'].to_list()
 
         self.wind_speeds_sim, self.wind_directions_sim = self._wind_vector_convert(wind_u, wind_v,direction= 'u_v_2_ws_wd') 
 
-        # saves the resolution the wind data was resampled to so we can resample back to obs_dt at the end
-        self.time_stamps_resampled = wind_df.index.to_list()
-    
     def _wind_vector_convert(self, input_1, input_2, direction = 'ws_wd_2_u_v'):
         '''
         Convert between (ws, wd) and (u,v)
@@ -299,7 +302,7 @@ class GaussianPuff:
                 resampled simulation results 
         '''
 
-        df = pd.DataFrame(c_matrix, index = self.time_stamps_resampled)
+        df = pd.DataFrame(c_matrix, index = self.time_stamps_sim)
         if mode == 'mean':
             df = df.resample(str(obs_dt)+'S').mean()
         elif mode == 'resample':

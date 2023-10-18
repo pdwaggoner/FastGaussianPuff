@@ -232,8 +232,7 @@ public:
     Returns:
         None, but fills X_rot and Y_rot with the rotated grids.
     */
-    void rotateGrids(double wd,
-                                    RefVector X_rot, RefVector Y_rot){
+    void rotateGrids(double wd, RefVector X_rot, RefVector Y_rot){
 
         Eigen::Matrix2d R;
         R << cos(wd), sin(wd),
@@ -705,7 +704,7 @@ public:
     void simulate(RefMatrix ch4){
 
         double emission_length = difftime(sim_end, sim_start);
-        int n_time_steps = floor(emission_length/puff_dt);
+        int n_puffs = ceil(emission_length/puff_dt);
 
         // later, for multisource: iterate over source coords
         setSourceCoordinates(0);
@@ -715,22 +714,26 @@ public:
 
         time_t current_time = sim_start;
         double report_ratio = 0.1;
-        for(int t = 0; t < n_time_steps; t++){
+
+        int puff_lifetime = ceil(puff_duration/sim_dt);
+        int ratio = puff_dt/sim_dt;
+
+        for(int t = 0; t < n_puffs; t++){
             
             // keeps track of current time. needed to compute stability class
             tm puff_start = *localtime(&current_time);
             current_time += puff_dt;
 
             // bounds check on time
-            if(t+puff_duration >= ch4.rows()) puff_duration = ch4.rows()-t;
+            if(t*ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-t*ratio;
 
             double theta = windDirectionToAngle(wind_directions[t]);
 
             // computes concentration timeseries for this puff
             concentrationPerPuff(emission_per_puff, theta, wind_speeds[t], 
-                                    puff_start.tm_hour, ch4.middleRows(t, puff_duration));
-
-            if(!quiet && floor(n_time_steps*report_ratio) == t){
+                                    puff_start.tm_hour, ch4.middleRows(t*ratio, puff_lifetime));
+            
+            if(!quiet && floor(n_puffs*report_ratio) == t){
                 std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
                 report_ratio += 0.1;
             }
