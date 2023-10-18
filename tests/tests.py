@@ -19,11 +19,27 @@ bin_dir = '../bin'
 sys.path.insert(0, bin_dir)
 from GaussianPuff import GaussianPuff as GP
 
+# source: 4T-11
+start_1 = '2022-02-22 01:33:22'
+end_1 = '2022-02-22 03:33:23'
+
+# source: 5S-27
+start_2 = '2022-02-26 21:36:00'
+end_2 = '2022-02-26 23:07:00'
+
+# source: 4W-47
+start_3 = '2022-04-27 03:49:09'
+end_3 = '2022-04-27 08:04:09'
+
+num_tests = 0
+tests_passed = 0
+tests_failed = 0
+failed_tests = []
 
 
 #%% 
 # Load in data
-data_dir = '../data/demo_data/'
+data_dir = './test_data/demo_data/'
 
 # 1-minute resolution wind data
 df_ws_1min = pd.read_csv(data_dir + 'df_ws_1min_METEC_ADET.csv') 
@@ -64,8 +80,7 @@ def runTest(exp_start, t_0, t_end,
             wind_speeds, wind_directions, 
             obs_dt, sim_dt, puff_dt,
             nx, ny, nz, 
-            grid_coords,
-            puff_duration
+            source_coordinates, emission_rate, grid_coords, puff_duration
             ):
 
     grid_puff = GP(obs_dt, sim_dt, puff_dt,
@@ -75,7 +90,7 @@ def runTest(exp_start, t_0, t_end,
                 grid_coordinates=grid_coords,
                 using_sensors=False,
                 nx=nx, ny=ny, nz=nz,
-                quiet=True,
+                quiet=False,
                 puff_duration=puff_duration,
     )
 
@@ -95,6 +110,9 @@ def check_test(ch4_old, ch4):
     passed = True
     tol = 10e-6 # float32 precision is what the code originally used, so this is slightly larger than that
     # stop one step short of end: original code doesn't actually produce results for final time, so skip it
+    print(np.linalg.norm(ch4[0].ravel()))
+    print(np.linalg.norm(ch4_old[0].ravel()))
+    print(np.linalg.norm(ch4[0].ravel()-ch4_old[0]))
     for t in range(0, len(ch4_old)-1):
 
         if np.linalg.norm(ch4_old[t]) < 10e-3: # ppb measurements are so small we don't care about relative error
@@ -108,106 +126,240 @@ def check_test(ch4_old, ch4):
                 passed = False
         if norm > tol: # doesn't work if there are NAN's
             print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
+            print("TIME: ", t)
+            print("NORM: ", norm)
 
             if passed:
                 passed = False
 
     return passed
 
-# select experiments
-# source: 4T-11
-start_1 = '2022-02-22 01:33:22'
-end_1 = '2022-02-22 03:33:23'
+def general_tests():
+    ################## GENERAL TESTS ###################
 
-# source: 5S-27
-start_2 = '2022-02-26 21:36:00'
-end_2 = '2022-02-26 23:07:00'
+    x_num = 20
+    y_num = 20
+    z_num = 20
 
-# source: 4W-47
-start_3 = '2022-04-27 03:49:09'
-end_3 = '2022-04-27 08:04:09'
+    puff_duration = 1080 # used in the original python code
 
-num_tests = 0
-tests_passed = 0
-tests_failed = 0
-failed_tests = []
+    obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
+    grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
 
-################## GENERAL TESTS ###################
+    ################ TEST 1 ######################
+    global num_tests
+    global tests_passed, tests_failed, failed_tests
+    num_tests += 1
 
-x_num = 20
-y_num = 20
-z_num = 20
+    source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
+    emission_rate = [1.953021587640098]
 
-puff_duration = 1080 # used in the original python code
+    exp_start = pd.to_datetime(start_1)
+    exp_end = pd.to_datetime(end_1)
 
-obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
-grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
 
-################ TEST 1 ######################
-num_tests += 1
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
 
-source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
-emission_rate = [1.953021587640098]
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runTest(start_1, t_0, t_end, wind_speeds, wind_directions, 
+                    obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
+                    source_coordinates, emission_rate, grid_coords, puff_duration)
 
-exp_start = pd.to_datetime(start_1)
-exp_end = pd.to_datetime(end_1)
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
 
-t_0 = exp_start.floor('T')
-t_end = exp_end.floor('T')
+    ################ TEST 2 ######################
+    num_tests += 1
 
-idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
-idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
-wind_speeds = ws_syn[idx_0 : idx_end+1]
-wind_directions = wd_syn[idx_0 : idx_end+1]
+    source_coordinates = [[488206.3525776105, 4493911.77819326, 2.0]]
+    emission_rate = [0.8436203738042646]
 
-print("RUNNING TEST 1")
-passed = runTest(start_1, t_0, t_end, wind_speeds, wind_directions, 
-                 obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, grid_coords, puff_duration)
+    exp_start = pd.to_datetime(start_2)
+    exp_end = pd.to_datetime(end_2)
 
-if not passed:
-    print("FAILED TEST ONE")
-    tests_failed += 1
-else:
-    print ("TEST ONE PASSED")
-    tests_passed += 1
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
+
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runTest(start_2, t_0, t_end, wind_speeds, wind_directions, 
+                    obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
+                    source_coordinates, emission_rate, grid_coords, puff_duration)
+
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
+
+    ################ TEST 3 ######################
+    num_tests += 1
+
+    source_coordinates = [[488124.41821990383, 4493915.016403197, 2.0]]
+    emission_rate = [0.5917636636467585]
+
+    exp_start = pd.to_datetime(start_3)
+    exp_end = pd.to_datetime(end_3)
+
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
+
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runTest(start_3, t_0, t_end, wind_speeds, wind_directions, 
+                    obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
+                    source_coordinates, emission_rate, grid_coords, puff_duration)
+
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
+
+def non_square_tests():
+    ################## NON_SQUARE GRID TESTS ###################
+
+    x_num = 10
+    y_num = 15
+    z_num = 5
+
+    puff_duration = 1080 # used in the original python code
+
+    obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
+    grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
+
+    ################ TEST 1 ######################
+    global num_tests
+    global tests_passed, tests_failed, failed_tests
+    num_tests += 1
+
+    source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
+    emission_rate = [1.953021587640098]
+
+    exp_start = pd.to_datetime(start_1)
+    exp_end = pd.to_datetime(end_1)
+
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
+
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runTest(start_1, t_0, t_end, wind_speeds, wind_directions, 
+                    obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
+                    source_coordinates, emission_rate, grid_coords, puff_duration)
+
+
+def varying_timestep_tests():
+    x_num = 50
+    y_num = 50
+    z_num = 50
+
+    puff_duration = 1080 # used in the original python code
+
+    obs_dt, sim_dt, puff_dt = 60, 10, 60 # [seconds]
+    grid_coords = [488098.55629668134, 4493841.098107514, 0, 488237.6735969247, 4493956.159806994, 24.0]
+
+    ################ TEST 1 ######################
+    global num_tests
+    global tests_passed, tests_failed, failed_tests
+    num_tests += 1
+
+    source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
+    emission_rate = [1.953021587640098]
+
+    exp_start = pd.to_datetime(start_1)
+    exp_end = pd.to_datetime(end_1)
+
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
+
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runTest(start_1, t_0, t_end, wind_speeds, wind_directions, 
+                    obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
+                    source_coordinates, emission_rate, grid_coords, puff_duration)
+
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
+
+
+    ################ TEST 2 ######################
+    num_tests += 1
+
+    source_coordinates = [[488163.3384441765, 4493892.532058168, 4.5]]
+    emission_rate = [1.953021587640098]
+
+    exp_start = pd.to_datetime(start_2)
+    exp_end = pd.to_datetime(end_2)
+
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
+
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runTest(start_2, t_0, t_end, wind_speeds, wind_directions, 
+                    obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
+                    source_coordinates, emission_rate, grid_coords, puff_duration)
+
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
 
 
 
-# elif i == 1:
-#     source_coordinates = [[488206.3525776105, 4493911.77819326, 2.0]]
-#     emission_rate = [0.8436203738042646]
-# elif i == 2:
-#     source_coordinates = [[488124.41821990383, 4493915.016403197, 2.0]]
-#     emission_rate = [0.5917636636467585]
-
-# grid_puff = GP(obs_dt, sim_dt, puff_dt,
-#                 t_0, t_end,
-#                 source_coordinates, emission_rate,
-#                 wind_speeds, wind_directions, 
-#                 grid_coordinates=grid_coords,
-#                 using_sensors=False,
-#                 nx=x_num, ny=y_num, nz=z_num,
-#                 quiet=False,
-#                 puff_duration=puff_duration
-# )
-
-# start = time.time()
-# ch4 = grid_puff.simulate()
-# end = time.time()
-
-# runtime = end-start
-# print("runtime: ", runtime)
-# print(f"simulation length (real time): {grid_puff.n_obs} minutes")
-
-# # compare to ground truth, generated using original code
-# test_data_dir = "./test_data/"
-# start_time_str = exp_start_time.replace(" ", "-").replace(":", "-")
-# filename = test_data_dir + "ch4-n-" + str(grid_puff.N_points) + "-sim-" + str(sim_dt) + "-puff-" + str(puff_dt) + "-exp-" + start_time_str + ".csv"
-# ch4 = np.loadtxt(filename, delimiter=",")
+# general_tests()
+# non_square_tests()
+varying_timestep_tests()
 
 
-# print("NUMER OF TESTS:", num_tests)
-# print("TESTS PASSED:", tests_passed)
-# print("TESTS FAILED:", tests_failed)
-# if(tests_failed > 0):
-#     print("Failed on test numbers", failed_tests)
+print("----------------------------------------------------------------")
+print("RESULTS")
+print("Total number of tests:", num_tests)
+print("Tests passed:", tests_passed)
+print("Tests failed:", tests_failed)
+if tests_failed > 0:
+    print("Test failed on test numbers:", failed_tests)
