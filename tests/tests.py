@@ -75,6 +75,35 @@ if df_ws_1min.shape == df_wd_1min.shape:
 else:
     raise ValueError(">>>>> df_ws and df_wd must have the same shape.") 
 
+def runSensorTest(exp_start, t_0, t_end, 
+            wind_speeds, wind_directions, 
+            obs_dt, sim_dt, puff_dt,
+            sensor_coordinates, source_coordinates, 
+            emission_rate, puff_duration
+            ):
+
+    start = time.time()
+    sensor_puff = GP(obs_dt, sim_dt, puff_dt,
+                t_0, t_end,
+                source_coordinates, emission_rate,
+                wind_speeds, wind_directions, 
+                using_sensors=True,
+                sensor_coordinates=sensor_coordinates,
+                quiet=True,
+                puff_duration=puff_duration,
+    )
+    end = time.time()
+    print("Runtime: ", end-start)
+
+    ch4 = sensor_puff.simulate()
+
+    # compare to ground truth, generated using original code
+    test_data_dir = "./test_data/"
+    start_time_str = exp_start.replace(" ", "-").replace(":", "-")
+    filename = test_data_dir + "ch4-sensor-n-" + str(sensor_puff.N_points) + "-sim-" + str(sim_dt) + "-puff-" + str(puff_dt) + "-exp-" + start_time_str + ".csv"
+    ch4_old = np.loadtxt(filename, delimiter=",")
+
+    return check_test(ch4_old, ch4)
 
 def runTest(exp_start, t_0, t_end, 
             wind_speeds, wind_directions, 
@@ -110,8 +139,8 @@ def check_test(ch4_old, ch4):
     passed = True
     tol = 10e-6 # float32 precision is what the code originally used, so this is slightly larger than that
     # stop one step short of end: original code doesn't actually produce results for final time, so skip it
-    # print(np.linalg.norm(ch4))
-    # print(np.linalg.norm(ch4_old))
+    print(np.linalg.norm(ch4))
+    print(np.linalg.norm(ch4_old))
     for t in range(0, len(ch4_old)-1):
 
         if np.linalg.norm(ch4_old[t]) < 10e-3: # ppb measurements are so small we don't care about relative error
@@ -410,14 +439,133 @@ def varying_timestep_tests():
 
     return
 
+def sensor_tests():
+ ################## GENERAL TESTS ###################
+    global num_tests
+    global tests_passed, tests_failed, failed_tests
+
+    puff_duration = 1080 # used in the original python code
+
+    obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
+
+    ################ TEST 1 ######################
+    # uses real wind data with fabricated emission sources
+    num_tests += 1
+
+    source_coordinates = [[10.5, 23, 4.5]]
+    emission_rate = [1.953021587640098]
+    sensor_coordinates = [[0, 1, 3.5], 
+                            [12.3, 4.9, 8],
+                            [-11, -4, 2],
+                            [-20, 5, 2],
+                            [14, -7, 4]]
+    
+
+    exp_start = pd.to_datetime(start_1)
+    exp_end = pd.to_datetime(end_1)
+
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
+
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runSensorTest(start_1, t_0, t_end,
+                           wind_speeds, wind_directions, 
+                           obs_dt, sim_dt, puff_dt,
+                           sensor_coordinates, source_coordinates, 
+                           emission_rate, puff_duration)
+
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
+
+    
+    ################ TEST 2 ######################
+    # uses sensor setup from METEC w real wind data
+    num_tests += 1
+
+    source_coordinates = [[488124.41821990383, 4493915.016403197, 2.0]]
+    emission_rate = [0.5917636636467585]
 
 
-print("RUNNING GENERAL TESTS")
-general_tests()
-print("RUNNING NON-SQUARE TESTS")
-non_square_tests()
-print("RUNNING TIMESTEP TESTS")
-varying_timestep_tests()
+    sensor_coordinates = [[488164.98285821447, 4493931.649887275, 2.4],
+        [488198.08502694493, 4493932.618594243, 2.4],
+        [488199.98542285635, 4493930.473245021, 2.4],
+        [488226.9012860443, 4493887.916890612, 2.4],
+        [488204.9825329503, 4493858.769131294, 2.4],
+        [488172.4989330686, 4493858.565324413, 2.4],
+        [488136.3904409793, 4493861.530987777, 2.4],
+        [488106.145508258, 4493896.167438727, 2.4],
+        [488133.15254321764, 4493932.355431944, 2.4],
+        [488149.4733440923, 4493899.772560725, 2.4],
+        [488156.6665182067, 4493895.099037761, 2.4]]
+    
+
+    exp_start = pd.to_datetime(start_3)
+    exp_end = pd.to_datetime(end_3)
+
+    t_0 = exp_start.floor('T')
+    t_end = exp_end.floor('T')
+
+    idx_0 = pd.Index(time_stamp_wind).get_indexer([exp_start], method='nearest')[0]
+    idx_end = pd.Index(time_stamp_wind).get_indexer([exp_end], method='nearest')[0]
+    wind_speeds = ws_syn[idx_0 : idx_end+1]
+    wind_directions = wd_syn[idx_0 : idx_end+1]
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runSensorTest(start_3, t_0, t_end,
+                           wind_speeds, wind_directions, 
+                           obs_dt, sim_dt, puff_dt,
+                           sensor_coordinates, source_coordinates, 
+                           emission_rate, puff_duration)
+
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
+
+    ################ TEST 3 ######################
+    # same as test 3 but with different sim_dt and puff_dt
+    num_tests += 1
+
+    sim_dt = 5
+    puff_dt = 30
+
+    print("-----------------------------------------")
+    print("RUNNING TEST ", num_tests)
+    passed = runSensorTest(start_3, t_0, t_end,
+                           wind_speeds, wind_directions, 
+                           obs_dt, sim_dt, puff_dt,
+                           sensor_coordinates, source_coordinates, 
+                           emission_rate, puff_duration)
+
+    if not passed:
+        print ("ERROR: TEST " + str(num_tests) + " FAILED")
+        tests_failed += 1
+    else:
+        print ("Test " + str(num_tests) + " passed")
+        tests_passed += 1
+
+
+# print("RUNNING GENERAL TESTS")
+# general_tests()
+# print("RUNNING NON-SQUARE TESTS")
+# non_square_tests()
+# print("RUNNING TIMESTEP TESTS")
+# varying_timestep_tests()
+print("RUNNING SENSOR TESTS")
+sensor_tests()
 
 
 print("----------------------------------------------------------------")

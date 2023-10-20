@@ -10,6 +10,7 @@ import pandas as pd
 import datetime
 from math import floor
 import CGaussianPuff as C_GP
+import CSensorGaussianPuff as CS_GP
 
 class GaussianPuff:
     def __init__(self,
@@ -18,6 +19,7 @@ class GaussianPuff:
                  source_coordinates, emission_rates,
                  wind_speeds, wind_directions,
                  grid_coordinates=None,
+                 sensor_coordinates=None,
                  nx=None, ny=None, nz=None,
                  using_sensors=False,
                  puff_duration = None,
@@ -132,18 +134,39 @@ class GaussianPuff:
             self.Y = self.Y.ravel()
             self.Z = self.Z.ravel()
 
-        # constructor for the c code
-        self.GPC = C_GP.CGaussianPuff(self.X, self.Y, self.Z, 
-                                      self.nx, self.ny, self.nz, 
-                                      sim_dt, puff_dt, puff_duration,
-                                      simulation_start, simulation_end,
-                                      self.wind_speeds_sim, self.wind_directions_sim,
-                                      source_coordinates, emission_rates,
-                                      conversion_factor, exp_threshold_tolerance, quiet)
+            # constructor for the c code
+            self.GPC = C_GP.CGaussianPuff(
+                    self.X, self.Y, self.Z, 
+                    self.nx, self.ny, self.nz, 
+                    sim_dt, puff_dt, puff_duration,
+                    simulation_start, simulation_end,
+                    self.wind_speeds_sim, self.wind_directions_sim,
+                    source_coordinates, emission_rates,
+                    conversion_factor, exp_threshold_tolerance, quiet)
+        else:
+            self.using_sensors = True
+            self.N_points = len(sensor_coordinates)
+
+            self.X, self.Y, self.Z = [], [], []
+            for sensor in sensor_coordinates:
+                self.X.append(sensor[0])
+                self.Y.append(sensor[1])
+                self.Z.append(sensor[2])
+
+            self.GPC = CS_GP.CSensorGaussianPuff(
+                self.X, self.Y, self.Z, 
+                self.N_points,
+                sim_dt, puff_dt, puff_duration,
+                simulation_start, simulation_end,
+                self.wind_speeds_sim, self.wind_directions_sim,
+                source_coordinates, emission_rates,
+                conversion_factor, exp_threshold_tolerance, quiet
+            )
+
 
         # initialize the final simulated concentration array
         self.ch4_sim = np.zeros((self.n_sim, self.N_points)) # simulation in sim_dt resolution, flattened
-        self.ch4_obs =  np.zeros((self.n_obs, *self.grid_dims)) # simulation resampled to obs_dt resolution
+        # self.ch4_obs =  np.zeros((self.n_obs, self.N_points)) # simulation resampled to obs_dt resolution
 
     def _verify_inputs(self, sim_dt, puff_dt, obs_dt):
 
@@ -311,12 +334,6 @@ class GaussianPuff:
             raise NotImplementedError(">>>>> sim to obs resampling mode") 
         
         c_matrix_res = df.to_numpy()
-        c_matrix_res = np.reshape(c_matrix_res, (self.n_obs, *self.grid_dims)) # reshape to grid coordinates
+        # c_matrix_res = np.reshape(c_matrix_res, (self.n_obs, *self.grid_dims)) # reshape to grid coordinates
         
         return c_matrix_res
-    
-    
-    
-        
-        
-    
