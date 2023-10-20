@@ -303,9 +303,6 @@ class GaussianPuff:
             print("\n************************************************************")
             print("*****************    PUFF SIMULATION END     ***************")
             print("************************************************************")
-            print(">>>>> end time:", datetime.datetime.now())
-        else:
-            print('*****************    PUFF SIMULATION END     ***************')
         
         return self.ch4_obs
     
