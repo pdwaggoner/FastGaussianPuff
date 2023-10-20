@@ -402,7 +402,6 @@ public:
         double travelTime = travelDistance/ws;
 
         return travelTime;
-
     }
 
     void GaussianPuffEquation(
@@ -422,15 +421,21 @@ public:
         double thresh_xy_max = sigma_y_max*thresh_constant;
         double thresh_z_max = sigma_z_max*thresh_constant;
 
-        // double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd); // number of seconds til plume leaves grid
-        int t = puff_duration;
+        double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd); // number of seconds til plume leaves grid
+        // int t = puff_duration;
+        // std::cout << t << std::endl;
 
         int n_time_steps = ceil(t/sim_dt);
+
+        // std::cout << "W TIME: " << n_time_steps << std::endl;
+        // std::cout << "NO: " << ceil(puff_duration/sim_dt) << std::endl; 
 
         // bound check on time
         if(n_time_steps >= ch4.rows()){
             n_time_steps = ch4.rows() - 1;
         }
+
+        // std::cout << "AFTER CHECK: " << n_time_steps << std::endl;
 
         for(int i = 0; i <= n_time_steps; i++){
 

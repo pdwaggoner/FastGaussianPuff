@@ -123,7 +123,10 @@ def runTest(exp_start, t_0, t_end,
                 puff_duration=puff_duration,
     )
 
+    start = time.time()
     ch4 = grid_puff.simulate()
+    end = time.time()
+    print("Runtime: ", end-start)
 
     # compare to ground truth, generated using original code
     test_data_dir = "./test_data/"
@@ -558,12 +561,12 @@ def sensor_tests():
         tests_passed += 1
 
 
-# print("RUNNING GENERAL TESTS")
-# general_tests()
-# print("RUNNING NON-SQUARE TESTS")
-# non_square_tests()
-# print("RUNNING TIMESTEP TESTS")
-# varying_timestep_tests()
+print("RUNNING GENERAL TESTS")
+general_tests()
+print("RUNNING NON-SQUARE TESTS")
+non_square_tests()
+print("RUNNING TIMESTEP TESTS")
+varying_timestep_tests()
 print("RUNNING SENSOR TESTS")
 sensor_tests()
 

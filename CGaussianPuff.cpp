@@ -49,6 +49,8 @@ public:
     bool quiet;
 
     const double two_pi_three_halves = std::pow(2*M_PI, 1.5);
+    double cosine; // store value of cosine/sine so we don't have to evaluate it across different functions
+    double sine;
 
     vec3d map_table; // precomputed map from the 3D meshgrid index to the 1D raveled index.
     /* Constructor.
@@ -125,8 +127,8 @@ public:
                                             double wind_shift, double wd){
 
         Eigen::Matrix2d R;
-        R << cos(wd), sin(wd),
-            -sin(wd), cos(wd);
+        R << cosine, sine,
+            -sine, cosine;
 
         Eigen::Vector2d X0;
         X0 << x_min, y_min;
@@ -145,14 +147,18 @@ public:
         double Xrt_dot_vp = X0_rt.dot(vp);
         double norm_sq_Xrt = X0_rt.dot(X0_rt);
 
-        double i_lower = (-Xrt_dot_v - thresh_xy - 1)/dx;
-        double i_upper = (-Xrt_dot_v + thresh_xy + 1)/dx;
+        double one_over_dx = 1/dx;
+        double one_over_dy = 1/dy;
+        double one_over_dz = 1/dz;
 
-        double j_lower = (-Xrt_dot_vp - thresh_xy - 1)/dy;
-        double j_upper = (-Xrt_dot_vp + thresh_xy + 1)/dy;
+        double i_lower = (-Xrt_dot_v - thresh_xy - 1)*one_over_dx;
+        double i_upper = (-Xrt_dot_v + thresh_xy + 1)*one_over_dx;
 
-        double k_lower = (-thresh_z + z0)/dz;
-        double k_upper = (thresh_z + z0)/dz;
+        double j_lower = (-Xrt_dot_vp - thresh_xy - 1)*one_over_dy;
+        double j_upper = (-Xrt_dot_vp + thresh_xy + 1)*one_over_dy;
+
+        double k_lower = (-thresh_z + z0)*one_over_dz;
+        double k_upper = (thresh_z + z0)*one_over_dz;
 
         return std::vector<double>{i_lower, i_upper, j_lower, j_upper, k_lower, k_upper};
     }
@@ -235,17 +241,17 @@ public:
     void rotateGrids(double wd, RefVector X_rot, RefVector Y_rot){
 
         Eigen::Matrix2d R;
-        R << cos(wd), sin(wd),
-            -sin(wd), cos(wd);
+        R << cosine, sine,
+            -sine, cosine;
 
         Eigen::Vector2d X0;
         X0 << x_min, y_min;
 
         Eigen::Vector2d v;
-        v << cos(wd), -sin(wd);
+        v << cosine, -sine;
 
         Eigen::Vector2d vp;
-        vp << sin(wd), cos(wd);
+        vp << sine, cosine;
 
         Eigen::Vector2d X_r = R*X0;
 
@@ -346,7 +352,7 @@ public:
 
         Vector2d origin(0,0);
 
-        Vector2d rayDir(cos(wd), sin(wd));
+        Vector2d rayDir(cosine, sine);
         Vector2d invRayDir = rayDir.cwiseInverse();
 
         // finding the last corner of the threshold box to leave the grid
@@ -678,6 +684,9 @@ public:
     */
     void concentrationPerPuff(double q, double wd, double ws, int hour,
                                 RefMatrix ch4){
+
+        cosine = cos(wd);
+        sine = sin(wd);
 
         Vector X_rot(X.size());
         Vector Y_rot(Y.size());
