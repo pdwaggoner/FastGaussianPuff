@@ -25,7 +25,7 @@ class GaussianPuff:
                  puff_duration = None,
                  exp_threshold_tolerance = 1e-9,
                  conversion_factor = 1e6*1.524,
-                 quiet=False):
+                 unsafe=False, quiet=False):
         
         '''
         Inputs: 
@@ -96,18 +96,6 @@ class GaussianPuff:
         if puff_duration == None:
             puff_duration = self.n_sim # ensures we don't overflow time index
 
-        # if using_sensors:
-        #     self.using_sensors = True
-        #     self.X = np.array(self.x_sensor)
-        #     self.Y = np.array(self.y_sensor)
-        #     self.Z = np.array(self.z_sensor)
-
-        #     self.nx = self.N_sensor
-        #     self.ny = 1
-        #     self.nz = 1
-        #     self.N_points = self.N_sensor
-        #     self.grid_dims = (self.nx, self.ny, self.nz)
-
         # creates grid
         if not using_sensors:
             self.using_sensors = False
@@ -142,7 +130,8 @@ class GaussianPuff:
                     simulation_start, simulation_end,
                     self.wind_speeds_sim, self.wind_directions_sim,
                     source_coordinates, emission_rates,
-                    conversion_factor, exp_threshold_tolerance, quiet)
+                    conversion_factor, exp_threshold_tolerance,
+                    unsafe, quiet)
         else:
             self.using_sensors = True
             self.N_points = len(sensor_coordinates)
@@ -160,7 +149,8 @@ class GaussianPuff:
                 simulation_start, simulation_end,
                 self.wind_speeds_sim, self.wind_directions_sim,
                 source_coordinates, emission_rates,
-                conversion_factor, exp_threshold_tolerance, quiet
+                conversion_factor, exp_threshold_tolerance,
+                unsafe, quiet
             )
 
 

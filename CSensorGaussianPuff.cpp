@@ -3,6 +3,7 @@
 #include <vector>
 #include <time.h>
 #include <chrono>
+#include <functional>
 
 #include <algorithm>
 
@@ -42,6 +43,8 @@ public:
     double x0, y0, z0; // current iteration's source coordinates
     double x_min, y_min; // current mins for the grid centered at the current source
 
+    std::function<double(double)> exp;
+
     double conversion_factor;
     double exp_tol;
 
@@ -73,11 +76,19 @@ public:
                     Vector wind_speeds, Vector wind_directions,
                     Matrix source_coordinates, Vector emission_strengths,
                     double conversion_factor, double exp_tol,
-                    bool quiet)
+                    bool unsafe, bool quiet)
     : X(X), Y(Y), Z(Z), N_sensors(N_sensors),
     sim_dt(sim_dt), puff_dt(puff_dt), puff_duration(puff_duration), wind_speeds(wind_speeds), wind_directions(wind_directions),
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
+
+        if(unsafe){
+            if (!quiet) std::cout << "RUNNING IN UNSAFE MODE\n";
+            this->exp = &fastExp; 
+        } else {
+            this->exp = [](double x){return std::exp(x);};
+        }
+
 
         sigma_y = Vector(N_sensors);
         sigma_z = Vector(N_sensors);
@@ -480,7 +491,7 @@ public:
                 double term_3_arg = (y_by_sig*y_by_sig + x_by_sig*x_by_sig);
 
                 double term_1 = q / (two_pi_three_halves * sigma_y[j]*sigma_y[j] * sigma_z[j]);
-                double term_4 = std::exp(-0.5*(term_3_arg + term_4_a_arg)) + std::exp(-0.5*(term_3_arg + term_4_b_arg));
+                double term_4 = this->exp(-0.5*(term_3_arg + term_4_a_arg)) + this->exp(-0.5*(term_3_arg + term_4_b_arg));
 
                 ch4(i, j) += term_1 * term_4 * conversion_factor;
 
@@ -563,6 +574,20 @@ public:
 
 private:
 
+    static double fastExp(double x){
+        constexpr double a = (1ll << 52) / 0.6931471805599453;
+        constexpr double b = (1ll << 52) * (1023 - 0.04367744890362246);
+        x = a * x + b;
+
+        constexpr double c = (1ll << 52);
+        if (x < c)
+            x = 0.0;
+
+        uint64_t n = static_cast<uint64_t>(x);
+        std::memcpy(&x, &n, 8);
+        return x;
+    }
+
     void setSourceCoordinates(int source_index){
         x0 = source_coordinates(source_index, 0);
         y0 = source_coordinates(source_index, 1);
@@ -592,6 +617,6 @@ PYBIND11_MODULE(CSensorGaussianPuff, m) {
     py::class_<CSensorGaussianPuff>(m, "CSensorGaussianPuff")
     .def(py::init<Vector, Vector, Vector, int, int, int, int, 
                     TimePoint, TimePoint, 
-                    Vector, Vector, Matrix, Vector, double, double, bool>())
+                    Vector, Vector, Matrix, Vector, double, double, bool, bool>())
     .def("simulate", &CSensorGaussianPuff::simulate);
 }
