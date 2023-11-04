@@ -58,18 +58,16 @@ if df_ws_1min.shape == df_wd_1min.shape:
 else:
     raise ValueError(">>>>> df_ws and df_wd must have the same shape.") 
 
-
-
-
-
 ############### all of the above is code that just reads in some wind data ##################
 
+
+########################### grid demo ############################
 # IMPORTANT: the wind data is on 1min resolution, so obs_dt = 60 seconds
 # the wind data gets resampled to sim_dt when the constructor for the python code is called.
 
 
 # set simulation parameters
-# IMPORTANT: obs_dt must be a positive integer multiple of sim_dt, and both sim_dt and puff_dt must be an integer
+# IMPORTANT: obs_dt must be a positive integer multiple of sim_dt, and both sim_dt and puff_dt must be integers
 obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
 
 # start and end times at minute resolution. Needs to be in the local timezone of where we're simulating
@@ -86,11 +84,9 @@ wind_speeds = ws_syn[idx_0 : idx_end+1]
 wind_directions = wd_syn[idx_0 : idx_end+1]
 
 # number of grid points
-x_num = 20
-y_num = 20
-z_num = 20
+x_num, y_num, z_num = 20, 20, 20
 
-# grid corner coordinates
+# grid coordinates
 grid_coords = [-100, -80, 0, 100, 80, 24.0] # format is (x_min, y_min, z_min, x_max, y_max, z_max) in [m]
 
 
@@ -104,7 +100,7 @@ grid_puff = GP(obs_dt, sim_dt, puff_dt,
                 wind_speeds, wind_directions, 
                 grid_coordinates=grid_coords,
                 nx=x_num, ny=y_num, nz=z_num,
-                quiet=False
+                unsafe=False, quiet=False
 )
 
 grid_puff.simulate()

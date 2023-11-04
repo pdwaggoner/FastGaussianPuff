@@ -18,23 +18,17 @@ class GaussianPuff:
                  simulation_start, simulation_end,
                  source_coordinates, emission_rates,
                  wind_speeds, wind_directions,
-                 grid_coordinates=None,
-                 sensor_coordinates=None,
-                 nx=None, ny=None, nz=None,
                  using_sensors=False,
-                 puff_duration = None,
+                 sensor_coordinates=None,
+                 grid_coordinates=None,
+                 nx=None, ny=None, nz=None,
+                 puff_duration = 1200,
                  exp_threshold_tolerance = 1e-9,
                  conversion_factor = 1e6*1.524,
                  unsafe=False, quiet=False):
         
         '''
         Inputs: 
-            wind_speeds [m/s] (list of floats): 
-                wind speed at each time stamp, in obs_dt resolution
-            wind_directions [degree] (list of floats): 
-                wind direction at each time stamp, in obs_dt resolution.
-                follows the conventional definition: 
-                0 -> wind blowing from North, 90 -> E, 180 -> S, 270 -> W
             obs_dt [s] (scalar, int): 
                 time interval (dt) for the observations
                 NOTE: obs_dt must be a positive integer multiple of sim_dt due to how resampling is done. 
@@ -43,29 +37,50 @@ class GaussianPuff:
                 NOTE: must be an integer number of seconds due to how timestamps are handled in C.
             puff_dt [s] (scalar, int): 
                 time interval (dt) between two successive puffs' creation
+                NOTE: must also be a positive integer multiple of sim_dt and <= obs_dt
             simulation_start, simulation_end (pd.DateTime values)
                 start and end times for the emission to be simulated.
-                NOTE: should be a minute resolution.
             source_coordinates (array, size=(n_sources, 3)) [m]:
-                holds source coordinates in (x,y,z) format in meters for each source.
+                holds source coordinate (x0,y0,z0) in meters for each source.
             emission_rates: (array, length=n_sources) [kg/hr]:
                 rate that each source is emitting at in kg/hr.
-            grid_coordinates: (array, length=6) [m]
-                holds the coordinates for the corners of the grid to be created.
-                format is grid_coordinates=[min_x, min_y, min_z, max_x, max_y, max_z]
+            wind_speeds [m/s] (list of floats): 
+                wind speed at each time stamp, in obs_dt resolution
+            wind_directions [degree] (list of floats): 
+                wind direction at each time stamp, in obs_dt resolution.
+                follows the conventional definition: 
+                0 -> wind blowing from North, 90 -> E, 180 -> S, 270 -> W
             using_sensors (boolean):
-                If True, ignores grid-related input parameters and only simulates at sensor locations
-                given in df_sensor_locations.
+                If True, ignores grid-related input parameters and only simulates at sensor coordinates.
+                True inputs:
+                    - sensor_coordinates
+                False inputs:
+                    - grid_coordinates,
+                    - nx, ny, nz
+            sensor_coordinates: (array, size=(n_sensors, 3)) [m]
+                coordinates of the sensors in (x,y,z) format.
+            grid_coordinates: (array, length=6) [m]
+                holds the coordinates for the corners of the rectangular grid to be created.
+                format is grid_coordinates=[min_x, min_y, min_z, max_x, max_y, max_z]
             nx, ny, ny (scalar, int):
                 Number of points for the grid the x, y, and z directions
-            puff_duration [s] (int):
-                how many seconds a puff can 'live'; we assume a puff will fade away after a certain time
+            puff_duration (int) [seconds] :
+                how many seconds a puff can 'live'; we assume a puff will fade away after a certain time.
+                Depending on the grid size wind speed, this parameter will never come into play as the simulation
+                for the puff stops when the plume has moved far away. In low wind speeds, however, this cutoff will
+                halt the simulation of a puff early. This may be desirable as exceedingly long (and likely unphysical)
+                plume departure times can be computed for wind speeds << 1 m/s
             exp_threshold_tolerance (scalar, float):
-                the tolerance used to threshold the exponentials when evaluating the Gaussian equation
+                the tolerance used to threshold the exponentials when evaluating the Gaussian equation.
+                If, for example, exp_tol = 1e-9, the concentration at a single point for an individual time step
+                will have error less than 1e-9. Upsampling to different time resolutions will introduce extra error. 
             conversion_factor (scalar, float): 
                 convert from kg/m^3 to ppm, this factor is for ch4 only
+            unsafe (boolean):
+                if True, will use unsafe evaluations for some operations. This mode is faster but introduces some 
+                error. If you're unsure about results, set to False and compare error between the two methods. 
             quiet (boolean): 
-                if output progress information while running or not
+               if True, outputs extra information about the simulation and its progress.
         '''
 
         self._verify_inputs(sim_dt, puff_dt, obs_dt)
@@ -156,7 +171,6 @@ class GaussianPuff:
 
         # initialize the final simulated concentration array
         self.ch4_sim = np.zeros((self.n_sim, self.N_points)) # simulation in sim_dt resolution, flattened
-        # self.ch4_obs =  np.zeros((self.n_obs, self.N_points)) # simulation resampled to obs_dt resolution
 
     def _verify_inputs(self, sim_dt, puff_dt, obs_dt):
 
@@ -287,6 +301,8 @@ class GaussianPuff:
 
         # resample results to the obs_dt-resolution
         self.ch4_obs = self._resample_simulation(self.ch4_sim, self.obs_dt)
+
+        print(np.linalg.norm(self.ch4_obs))
         
         
         if self.quiet == False:
@@ -321,6 +337,5 @@ class GaussianPuff:
             raise NotImplementedError(">>>>> sim to obs resampling mode") 
         
         c_matrix_res = df.to_numpy()
-        # c_matrix_res = np.reshape(c_matrix_res, (self.n_obs, *self.grid_dims)) # reshape to grid coordinates
         
         return c_matrix_res

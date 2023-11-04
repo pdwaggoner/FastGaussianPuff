@@ -660,15 +660,15 @@ def unsafe_tests():
         tests_passed += 1
 
 
-print("RUNNING GENERAL TESTS")
+print("\nRUNNING GENERAL TESTS")
 general_tests()
-print("RUNNING UNSAFE MODE TESTS")
+print("\nRUNNING UNSAFE MODE TESTS")
 unsafe_tests()
-print("RUNNING NON-SQUARE TESTS")
+print("\nRUNNING NON-SQUARE TESTS")
 non_square_tests()
-print("RUNNING TIMESTEP TESTS")
+print("\nRUNNING TIMESTEP TESTS")
 varying_timestep_tests()
-print("RUNNING SENSOR TESTS")
+print("\nRUNNING SENSOR TESTS")
 sensor_tests()
 
 
