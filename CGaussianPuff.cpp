@@ -43,6 +43,7 @@ public:
     Vector emission_strengths;
     double x0, y0, z0; // current iteration's source coordinates
     double x_min, y_min; // current mins for the grid centered at the current source
+    double x_max, y_max; 
 
     std::function<double(double)> exp;
 
@@ -344,9 +345,6 @@ public:
         double i_max = start_box[1];
         double j_min = start_box[2];
         double j_max = start_box[3];
-
-        double x_max = X.maxCoeff() - x0;
-        double y_max = Y.maxCoeff() - y0;
 
         // corners of the threshold box
         double box_min_x = x_min + i_min*dx;
@@ -768,6 +766,9 @@ private:
 
         x_min = X.minCoeff() - x0;
         y_min = Y.minCoeff() - y0;
+        x_max = X.maxCoeff() - x0;
+        y_max = Y.maxCoeff() - y0;
+
     }
 
     // convert wind direction (degrees) to the angle (radians) between the wind vector and positive x-axis
