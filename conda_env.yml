@@ -1,0 +1,8 @@
+# this is the conda environment needed to run the tests on Casper
+# create the environment locally from this file with `conda env create -f conda_env.yml`
+name: gp
+channels:
+  - conda-forge
+dependencies:
+  - pybind11
+  - pandas

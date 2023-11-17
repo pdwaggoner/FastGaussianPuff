@@ -7,8 +7,6 @@ Created on Wed Sep 21 16:01:36 2022
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
-import pickle
 
 
 '''

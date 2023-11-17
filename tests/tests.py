@@ -39,7 +39,7 @@ failed_tests = []
 
 #%% 
 # Load in data
-data_dir = '../data/demo_data/'
+data_dir = './test_data/'
 
 # 1-minute resolution wind data
 df_ws_1min = pd.read_csv(data_dir + 'df_ws_1min_METEC_ADET.csv') 
@@ -47,11 +47,6 @@ df_wd_1min = pd.read_csv(data_dir + 'df_wd_1min_METEC_ADET.csv')
 df_ws_1min['time_stamp.mountain'] = pd.to_datetime(df_ws_1min['time_stamp.mountain'])
 df_wd_1min['time_stamp.mountain'] = pd.to_datetime(df_wd_1min['time_stamp.mountain'])
 
-
-# experiment data
-df_experiment = pd.read_csv(data_dir + 'df_exp_METEC_ADET.csv')
-df_experiment['start_time.mountain'] = pd.to_datetime(df_experiment['start_time.mountain'])
-df_experiment['end_time.mountain'] = pd.to_datetime(df_experiment['end_time.mountain'])
 
 # Data processing
 # column names used in the load in dfs
