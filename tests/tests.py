@@ -78,7 +78,6 @@ def runSensorTest(exp_start, t_0, t_end,
             unsafe=False
             ):
 
-    start = time.time()
     sensor_puff = GP(obs_dt, sim_dt, puff_dt,
                 t_0, t_end,
                 source_coordinates, emission_rate,
@@ -88,10 +87,11 @@ def runSensorTest(exp_start, t_0, t_end,
                 quiet=True,
                 puff_duration=puff_duration, unsafe=unsafe
     )
+
+    start = time.time()
+    ch4 = sensor_puff.simulate()
     end = time.time()
     print("Runtime: ", end-start)
-
-    ch4 = sensor_puff.simulate()
 
     # compare to ground truth, generated using original code
     test_data_dir = "./test_data/"
