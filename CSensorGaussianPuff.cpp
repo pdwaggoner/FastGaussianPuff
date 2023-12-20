@@ -41,7 +41,7 @@ public:
     Matrix source_coordinates;
     Vector emission_strengths;
     double x0, y0, z0; // source coordintaes for curent source
-    Vector X_shift, Y_shift; // shifted coordinates for current source
+    Matrix s; // shifted sensor coordinates for current source
     double x_min, y_min; // current mins for the grid centered at the current source
     double x_max, y_max; 
 
@@ -84,6 +84,10 @@ public:
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
 
+        std::cout << "X SIZE: " << X.size() << std::endl;
+        s.resize(2, X.size());
+        std::cout << "S SIZE: " << s.rows() << ", " << s.cols() << std::endl;
+
         if(unsafe){
             if (!quiet) std::cout << "RUNNING IN UNSAFE MODE\n";
             this->exp = &fastExp; 
@@ -112,16 +116,10 @@ public:
         R << cos(wd), sin(wd),
             -sin(wd), cos(wd);
 
-        Eigen::Vector2d v;
-        v << cos(wd), -sin(wd);
+        Matrix R_s = R*s;
 
-        Eigen::Vector2d vp;
-        vp << sin(wd), cos(wd);
-
-        Eigen::Matrix2Xd rotated(2, X_shift.size());
-
-        X_rot = X_shift.array()*v[0] + Y_shift.array()*vp[0];
-        Y_rot = X_shift.array()*v[1] + Y_shift.array()*vp[1];
+        X_rot = R_s.row(0);
+        Y_rot = R_s.row(1);
     }
 
     /* Axis Aligned Bounding Box algorithm. Used to compute the intersections between a ray (wind direction) and a square.
@@ -583,8 +581,10 @@ private:
         y0 = source_coordinates(source_index, 1);
         z0 = source_coordinates(source_index, 2);
 
-        X_shift = X.array() - x0;
-        Y_shift = Y.array() - y0;
+        Vector X_shift = X.array() - x0;
+        Vector Y_shift = Y.array() - y0;
+
+        s << X_shift.transpose(), Y_shift.transpose();
 
         x_min = X.minCoeff() - x0;
         y_min = Y.minCoeff() - y0;
