@@ -40,7 +40,8 @@ public:
     time_t sim_start, sim_end;
     Matrix source_coordinates;
     Vector emission_strengths;
-    double x0, y0, z0; // current iteration's source coordinates
+    double x0, y0, z0; // source coordintaes for curent source
+    Vector X_shift, Y_shift; // shifted coordinates for current source
     double x_min, y_min; // current mins for the grid centered at the current source
     double x_max, y_max; 
 
@@ -105,14 +106,11 @@ public:
     Returns:
         None, but fills X_rot and Y_rot with the rotated grids.
     */
-    void rotateGrids(double wd, RefVector X_rot, RefVector Y_rot){
+    void rotateSensors(double wd, RefVector X_rot, RefVector Y_rot){
 
         Eigen::Matrix2d R;
         R << cos(wd), sin(wd),
             -sin(wd), cos(wd);
-
-        Eigen::Vector2d X0;
-        X0 << x_min, y_min;
 
         Eigen::Vector2d v;
         v << cos(wd), -sin(wd);
@@ -120,16 +118,10 @@ public:
         Eigen::Vector2d vp;
         vp << sin(wd), cos(wd);
 
-        Eigen::Vector2d X_r = R*X0;
-
-        // shifted to be centered at the source then bumped up to start at 0 to align with indexing
-        Vector X_shift = X.array()-x0-x_min;
-        Vector Y_shift = Y.array()-y0-y_min;
-
         Eigen::Matrix2Xd rotated(2, X_shift.size());
 
-        X_rot = X_r[0] + X_shift.array()*v[0] + Y_shift.array()*vp[0];
-        Y_rot = X_r[1] + X_shift.array()*v[1] + Y_shift.array()*vp[1];
+        X_rot = X_shift.array()*v[0] + Y_shift.array()*vp[0];
+        Y_rot = X_shift.array()*v[1] + Y_shift.array()*vp[1];
     }
 
     /* Axis Aligned Bounding Box algorithm. Used to compute the intersections between a ray (wind direction) and a square.
@@ -513,7 +505,7 @@ public:
         Vector Y_rot(Y.size());
 
         // rotates X and Y grids, stores in X_rot and Y_rot
-        rotateGrids(wd, X_rot, Y_rot);
+        rotateSensors(wd, X_rot, Y_rot);
 
         char stability_class = stabilityClassifier(ws, hour);
 
@@ -590,6 +582,9 @@ private:
         x0 = source_coordinates(source_index, 0);
         y0 = source_coordinates(source_index, 1);
         z0 = source_coordinates(source_index, 2);
+
+        X_shift = X.array() - x0;
+        Y_shift = Y.array() - y0;
 
         x_min = X.minCoeff() - x0;
         y_min = Y.minCoeff() - y0;
