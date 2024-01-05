@@ -301,8 +301,6 @@ class GaussianPuff:
 
         # resample results to the obs_dt-resolution
         self.ch4_obs = self._resample_simulation(self.ch4_sim, self.obs_dt)
-
-        print(np.linalg.norm(self.ch4_obs))
         
         
         if self.quiet == False:

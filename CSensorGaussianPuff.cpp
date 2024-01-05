@@ -84,9 +84,7 @@ public:
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
 
-        std::cout << "X SIZE: " << X.size() << std::endl;
         s.resize(2, X.size());
-        std::cout << "S SIZE: " << s.rows() << ", " << s.cols() << std::endl;
 
         if(unsafe){
             if (!quiet) std::cout << "RUNNING IN UNSAFE MODE\n";
@@ -421,20 +419,13 @@ public:
         double thresh_z_max = sigma_z_max*thresh_constant;
 
         double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd); // number of seconds til plume leaves grid
-        // int t = puff_duration;
-        // std::cout << t << std::endl;
 
         int n_time_steps = ceil(t/sim_dt);
-
-        // std::cout << "W TIME: " << n_time_steps << std::endl;
-        // std::cout << "NO: " << ceil(puff_duration/sim_dt) << std::endl; 
 
         // bound check on time
         if(n_time_steps >= ch4.rows()){
             n_time_steps = ch4.rows() - 1;
         }
-
-        // std::cout << "AFTER CHECK: " << n_time_steps << std::endl;
 
         for(int i = 0; i <= n_time_steps; i++){
 
