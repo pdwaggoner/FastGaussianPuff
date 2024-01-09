@@ -599,9 +599,8 @@ public:
         double sigma_z_max = sigma_z.maxCoeff();
 
         // compute thresholds
-        double term_1_thresh = q / (two_pi_three_halves * sigma_y_max*sigma_y_max * sigma_z_max);
-        double emission_strength = term_1_thresh * conversion_factor; // called q_{yz} in the writeup
-        double threshold = std::log(exp_tol / emission_strength);
+        double prefactor = (q * conversion_factor) / (two_pi_three_halves * sigma_y_max*sigma_y_max * sigma_z_max);
+        double threshold = std::log(exp_tol / (2*prefactor));
         double thresh_constant = std::sqrt(-2*threshold);
 
         double thresh_xy_max = sigma_y_max*thresh_constant;
