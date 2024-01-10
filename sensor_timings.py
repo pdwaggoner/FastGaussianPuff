@@ -103,11 +103,12 @@ for index, row in df_experiment.iterrows():
     wind_directions = wd_syn[idx_0 : idx_end+1]
 
     obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
+    puff_duration = 1200
 
     source = df_source.loc[df_source["name"] == source_id]
 
     source_coords = [[source["utm_easting.m"].values[0], source["utm_northing.m"].values[0], source["height.m"].values[0]]]
 
     runSensorSim(file, index, source_id, exp_start, exp_end, wind_speeds, wind_directions,
-                 obs_dt, sim_dt, puff_dt, sensor_coords, source_coords, [emission_rate], puff_dt)
+                 obs_dt, sim_dt, puff_dt, sensor_coords, source_coords, [emission_rate], puff_duration)
     
