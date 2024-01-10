@@ -1,5 +1,5 @@
 # keep data out of repository
-data/*/
+data/*
 tests/test_data/*
 demo/*.csv
 

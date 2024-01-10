@@ -22,7 +22,7 @@ from GaussianPuff import GaussianPuff as GP
 
 
 # Load in data
-data_dir = '../data/demo_data/'
+data_dir = '../data/'
 
 # 1-minute resolution wind data
 df_ws_1min = pd.read_csv(data_dir + 'df_ws_1min_METEC_ADET.csv') 
