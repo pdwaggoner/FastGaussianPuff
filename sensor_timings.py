@@ -33,7 +33,7 @@ def runSensorSim(fd, exp_index, source_id, t_0, t_end,
     sensor_puff.simulate()
     end = time.time()
 
-    fd.write("%d \t %s \t %s \t %s \t %f\n" % (exp_index, source_id, exp_start, exp_end, end-start))
+    fd.write("%d,%s,%s,%s,%f\n" % (exp_index, source_id, exp_start, exp_end, end-start))
 
 # Load in data
 data_dir = './tests/test_data/'
@@ -45,7 +45,7 @@ df_ws_1min['time_stamp.mountain'] = pd.to_datetime(df_ws_1min['time_stamp.mounta
 df_wd_1min['time_stamp.mountain'] = pd.to_datetime(df_wd_1min['time_stamp.mountain'])
 
 # experiment data
-df_experiment = pd.read_csv("./data/demo_data/df_exp_METEC_ADET.csv") 
+df_experiment = pd.read_csv("./data/df_exp_METEC_ADET.csv") 
 df_source = pd.read_csv("./data/df_source_locs_METEC_ADET.csv")
 df_sensor = pd.read_csv("./data/df_sensor_locs_METEC_ADET.csv")
 
@@ -83,10 +83,10 @@ else:
 #%%
 f_name = "./timings/algorithm_sensor_campaign.txt"
 file = open(f_name, "a")
-file.write("--------------------------------------\n")
-file.write("exp_id \t source_id \t exp_start \t exp_end \t runtime (s)\n")
+file.write("exp_id,source_id,exp_start,exp_end,runtime\n")
 
 for index, row in df_experiment.iterrows():
+    print("exp:", index)
     exp_start = pd.to_datetime(row["start_time.mountain"])
     exp_end = pd.to_datetime(row["end_time.mountain"])
     source_id = row["name"]
