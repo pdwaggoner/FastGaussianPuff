@@ -126,7 +126,7 @@ public:
     Inputs:
         thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
             dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
-        ws, wd: wind speed (m/s) and direction (radians)
+        ws, wind speed (m/s)
         t_i: time step (s)
 
     Returns:
@@ -135,7 +135,7 @@ public:
         roundind them early creates a rounding error.
     */
     std::vector<double> computeIndexBounds(double thresh_xy, double thresh_z,
-                                            double wind_shift, double wd){
+                                            double wind_shift){
 
         Eigen::Matrix2d R;
         R << cosine, sine,
@@ -145,7 +145,6 @@ public:
         X0 << x_min, y_min;
 
         Eigen::Vector2d v = R.col(0);
-
         Eigen::Vector2d vp = R.col(1);
 
         Eigen::Vector2d tw;
@@ -178,17 +177,16 @@ public:
     Inputs:
         thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
             dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
-        ws, wd: wind speed (m/s) and direction (radians)
-        t_i: time step (s)
+        wind_shift: meters that the plume is shifted downwind at the current timestep
         x0, y0, z0: coordinates of source (m)
     Returns:
         A list of indices to the flattened grids where the Gaussian equation should be evaluated.
     */
     std::vector<int> getValidIndices(double thresh_xy, double thresh_z,
-                                        double wind_shift, double wd){
+                                        double wind_shift){
         
         std::vector<double> indexBounds = computeIndexBounds(thresh_xy, thresh_z,
-                                                            wind_shift, wd);
+                                                            wind_shift);
 
         int i_lower = floor(indexBounds[0]);
         int i_upper = ceil(indexBounds[1]);
@@ -244,12 +242,11 @@ public:
 
     /* Rotates the X and Y grids based on the current wind direction and source location.
     Inputs:
-        wd: current wind direction (radians)
         X_rot, Y_rot: vectors the same size as the grid to get filled with rotated coordinates.
     Returns:
         None, but fills X_rot and Y_rot with the rotated grids.
     */
-    void rotateGrids(double wd, RefVector X_rot, RefVector Y_rot){
+    void rotateGrids(RefVector X_rot, RefVector Y_rot){
 
         Eigen::Matrix2d R;
         R << cosine, sine,
@@ -258,11 +255,8 @@ public:
         Eigen::Vector2d X0;
         X0 << x_min, y_min;
 
-        Eigen::Vector2d v;
-        v << cosine, -sine;
-
-        Eigen::Vector2d vp;
-        vp << sine, cosine;
+        Eigen::Vector2d v = R.col(0);
+        Eigen::Vector2d vp = R.col(1);
 
         Eigen::Vector2d X_r = R*X0;
 
@@ -329,17 +323,17 @@ public:
     /* Computes the time step when the plume will exit the computational grid. 
     Inputs:
         thresh_xy: Gaussian threshold on xy
-        ws, wd: wind speed (m/s) and wind direction (radians)
+        ws, wind speed (m/s)
     Returns:
         the time when the plume will be fully off the grid.
     */
     double calculatePlumeTravelTime(double thresh_xy, 
-                                    double ws, double wd){
+                                    double ws){
 
         // doesn't need z parameters since plume only moves in 2D. wind shift = 0 since plume hasn't moved
         double wind_shift = 0;
         std::vector<double> start_box = computeIndexBounds(thresh_xy, 0, 
-                                        wind_shift, wd);
+                                        wind_shift);
 
         double i_min = start_box[0];
         double i_max = start_box[1];
@@ -582,7 +576,7 @@ public:
     /* Evaluates the Gaussian Puff equation on the grids. 
     Inputs:
         q: Total emission corresponding to this puff (kg)
-        ws, wd: wind speed (m/s) and wind direction (radians)
+        ws, wind speed (m/s)
         X_rot, Y_rot: rotated X and Y grids. The Z grid isn't rotated so the member variable is used repeatedly.
         ts: time series the puff is live for. 
         c: 2D concentration array. The first index represents the time step, the second index represents the flattened
@@ -591,7 +585,7 @@ public:
         none, but the concentrations are added into the concentration array.
     */
     void GaussianPuffEquation(
-        double q, double ws, double wd,
+        double q, double ws,
         RefVector X_rot, RefVector Y_rot,
         RefMatrix ch4){
 
@@ -606,7 +600,7 @@ public:
         double thresh_xy_max = sigma_y_max*thresh_constant;
         double thresh_z_max = sigma_z_max*thresh_constant;
 
-        double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd); // number of seconds til plume leaves grid
+        double t = calculatePlumeTravelTime(thresh_xy_max, ws); // number of seconds til plume leaves grid
 
         int n_time_steps = ceil(t/sim_dt); // rescale to unitless number of timesteps
 
@@ -621,7 +615,7 @@ public:
             double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
 
             std::vector<int> indices = getValidIndices(thresh_xy_max, thresh_z_max, 
-                                        wind_shift, wd);
+                                        wind_shift);
 
             if(indices.empty()){
                 continue;
@@ -683,33 +677,34 @@ public:
     /* Computes the concentration timeseries for a single puff.
     Inputs:
         q: Total emission corresponding to this puff (kg)
-        ws, wd: wind speed (m/s) and wind direction (radians)
+        ws, theta: wind speed (m/s) and wind direction (radians)
         hour: current hour of day (int)
         ch4: 2D concentration array. First index is time, second index is the flattened spatial index.
     Returns:
         None. The concentration is added directly into the ch4 array in GaussianPuffEquation()
     */
-    void concentrationPerPuff(double q, double wd, double ws, int hour,
+    void concentrationPerPuff(double q, double theta, double ws, int hour,
                                 RefMatrix ch4){
 
-        cosine = cos(wd);
-        sine = sin(wd);
+        // cache cos/sin so they can get reused in other calls
+        cosine = cos(theta);
+        sine = sin(theta);
 
         Vector X_rot(X.size());
         Vector Y_rot(Y.size());
 
         // rotates X and Y grids, stores in X_rot and Y_rot
-        rotateGrids(wd, X_rot, Y_rot);
+        rotateGrids(X_rot, Y_rot);
 
         char stability_class = stabilityClassifier(ws, hour);
 
         // gets sigma coefficients and stores in sigma_{y,z} class member vars
         getSigmaCoefficients(stability_class, X_rot);
 
-        GaussianPuffEquation(q, ws, wd,
-                                X_rot, Y_rot,
-                                ch4);
-    }
+        GaussianPuffEquation(q, ws,
+                            X_rot, Y_rot,
+                            ch4);
+}
 
     /* Simulation time loop
     Inputs:

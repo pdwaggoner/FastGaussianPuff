@@ -53,6 +53,8 @@ public:
     bool quiet;
 
     const double two_pi_three_halves = std::pow(2*M_PI, 1.5);
+    double cosine; // store value of cosine/sine so we don't have to evaluate it across different functions
+    double sine;
 
     /* Constructor.
     Inputs:
@@ -103,16 +105,15 @@ public:
 
     /* Rotates the X and Y grids based on the current wind direction and source location.
     Inputs:
-        wd: current wind direction (radians)
         X_rot, Y_rot: vectors the same size as the grid to get filled with rotated coordinates.
     Returns:
         None, but fills X_rot and Y_rot with the rotated grids.
     */
-    void rotateSensors(double wd, RefVector X_rot, RefVector Y_rot){
+    void rotateSensors(RefVector X_rot, RefVector Y_rot){
 
         Eigen::Matrix2d R;
-        R << cos(wd), sin(wd),
-            -sin(wd), cos(wd);
+        R << cosine, sine,
+            -sine, cosine;
 
         Matrix R_s = R*s;
 
@@ -367,7 +368,7 @@ public:
     }
 
 
-    double calculatePlumeTravelTime(double thresh_xy, double ws, double wd){
+    double calculatePlumeTravelTime(double thresh_xy, double ws){
 
         // max sized plume centered on source
         Vector2d box_min(-thresh_xy, -thresh_xy);
@@ -378,7 +379,7 @@ public:
 
         Vector2d origin(0,0);
 
-        Vector2d rayDir(cos(wd), sin(wd));
+        Vector2d rayDir(cosine, sine);
         Vector2d invRayDir = rayDir.cwiseInverse();
 
         // finding the last corner of the threshold box to leave the grid
@@ -402,7 +403,7 @@ public:
     }
 
     void GaussianPuffEquation(
-        double q, double ws, double wd,
+        double q, double ws,
         RefVector X_rot, RefVector Y_rot,
         RefMatrix ch4){
 
@@ -417,7 +418,7 @@ public:
         double thresh_xy_max = sigma_y_max*thresh_constant;
         double thresh_z_max = sigma_z_max*thresh_constant;
 
-        double t = calculatePlumeTravelTime(thresh_xy_max, ws, wd); // number of seconds til plume leaves grid
+        double t = calculatePlumeTravelTime(thresh_xy_max, ws); // number of seconds til plume leaves grid
 
         int n_time_steps = ceil(t/sim_dt);
 
@@ -480,27 +481,31 @@ public:
     /* Computes the concentration timeseries for a single puff.
     Inputs:
         q: Total emission corresponding to this puff (kg)
-        ws, wd: wind speed (m/s) and wind direction (radians)
+        ws, wind speed (m/s)
         hour: current hour of day (int)
         ch4: 2D concentration array. First index is time, second index is the flattened spatial index.
     Returns:
         None. The concentration is added directly into the ch4 array in GaussianPuffEquation()
     */
-    void concentrationPerPuff(double q, double wd, double ws, int hour,
+    void concentrationPerPuff(double q, double theta, double ws, int hour,
                                 RefMatrix ch4){
+
+        // cache cos/sin so they can get reused in other calls
+        cosine = cos(theta);
+        sine = sin(theta);
 
         Vector X_rot(X.size());
         Vector Y_rot(Y.size());
 
         // rotates X and Y grids, stores in X_rot and Y_rot
-        rotateSensors(wd, X_rot, Y_rot);
+        rotateSensors(X_rot, Y_rot);
 
         char stability_class = stabilityClassifier(ws, hour);
 
         // gets sigma coefficients and stores in sigma_{y,z} class member vars
         getSigmaCoefficients(stability_class, X_rot);
 
-        GaussianPuffEquation(q, ws, wd,
+        GaussianPuffEquation(q, ws,
                                 X_rot, Y_rot,
                                 ch4);
     }
