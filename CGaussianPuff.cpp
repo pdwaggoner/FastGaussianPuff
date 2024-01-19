@@ -138,8 +138,8 @@ public:
                                             double wind_shift){
 
         Eigen::Matrix2d R;
-        R << cosine, sine,
-            -sine, cosine;
+        R << cosine, -sine,
+            sine, cosine;
 
         Eigen::Vector2d X0;
         X0 << x_min, y_min;
@@ -249,8 +249,8 @@ public:
     void rotateGrids(RefVector X_rot, RefVector Y_rot){
 
         Eigen::Matrix2d R;
-        R << cosine, sine,
-            -sine, cosine;
+        R << cosine, -sine,
+            sine, cosine;
 
         Eigen::Vector2d X0;
         X0 << x_min, y_min;
@@ -354,7 +354,7 @@ public:
 
         Vector2d origin(0,0);
 
-        Vector2d rayDir(cosine, sine);
+        Vector2d rayDir(cosine, -sine);
         Vector2d invRayDir = rayDir.cwiseInverse();
 
         // finding the last corner of the threshold box to leave the grid
@@ -767,7 +767,7 @@ private:
 
     // convert wind direction (degrees) to the angle (radians) between the wind vector and positive x-axis
     double windDirectionToAngle(double wd){
-        double theta = 270 - wd;
+        double theta = wd - 270;
         if(theta < 0) theta = theta + 360;
         theta = theta*(M_PI/180.0); // convert to radians
 
