@@ -63,8 +63,7 @@ public:
         nx, ny, nz: number of points in each direction
         sim_dt: time between simulation time steps (MUST BE INTEGER NUMBER OF SECONDS)
         puff_dt: time between creation of two puffs
-        puff_duration: maximum number of seconds puff can be live for. The default is no threshold, since the code
-            computes the correct cutoff time. Only add a puff duration if you need faster runtimes at the expense of accuracy.
+        puff_duration: maximum number of seconds puff can be live for. 
         sim_start, sim_end: datetime stamps for when to start and end the emission
         wind_speeds, wind_directions: timeseries for wind speeds (m/s) and directions (degrees) at sim_dt resolution
         source_coordinates: source coordinates in (x,y,z) format for each source. size- (n_sources, 3)
@@ -729,22 +728,22 @@ public:
         int puff_lifetime = ceil(puff_duration/sim_dt);
         int ratio = puff_dt/sim_dt;
 
-        for(int t = 0; t < n_puffs; t++){
+        for(int p = 0; p < n_puffs; p++){
             
             // keeps track of current time. needed to compute stability class
             tm puff_start = *localtime(&current_time);
             current_time += puff_dt;
 
             // bounds check on time
-            if(t*ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-t*ratio;
+            if(p*ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-p*ratio;
 
-            double theta = windDirectionToAngle(wind_directions[t]);
+            double theta = windDirectionToAngle(wind_directions[p]);
 
             // computes concentration timeseries for this puff
-            concentrationPerPuff(emission_per_puff, theta, wind_speeds[t], 
-                                    puff_start.tm_hour, ch4.middleRows(t*ratio, puff_lifetime));
+            concentrationPerPuff(emission_per_puff, theta, wind_speeds[p], 
+                                    puff_start.tm_hour, ch4.middleRows(p*ratio, puff_lifetime));
             
-            if(!quiet && floor(n_puffs*report_ratio) == t){
+            if(!quiet && floor(n_puffs*report_ratio) == p){
                 std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
                 report_ratio += 0.1;
             }

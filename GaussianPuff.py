@@ -18,6 +18,7 @@ class GaussianPuff:
                  simulation_start, simulation_end,
                  source_coordinates, emission_rates,
                  wind_speeds, wind_directions,
+                 output_dt=None,
                  using_sensors=False,
                  sensor_coordinates=None,
                  grid_coordinates=None,
@@ -38,6 +39,9 @@ class GaussianPuff:
             puff_dt [s] (scalar, int): 
                 time interval (dt) between two successive puffs' creation
                 NOTE: must also be a positive integer multiple of sim_dt and <= obs_dt
+            output_dt [s] (scalar, int):
+                resolution to resample the concentration to at the end of the sismulation. By default,
+                resamples to the resolution of the wind observations obs_dt.
             simulation_start, simulation_end (pd.DateTime values)
                 start and end times for the emission to be simulated.
             source_coordinates (array, size=(n_sources, 3)) [m]:
@@ -88,7 +92,10 @@ class GaussianPuff:
         self.obs_dt = obs_dt 
         self.sim_dt = sim_dt 
         self.puff_dt = puff_dt
-
+        if output_dt is None:
+            self.output_dt = self.obs_dt
+        else:
+            self.output_dt = output_dt
 
         self.sim_start = simulation_start
         self.sim_end = simulation_end
@@ -105,9 +112,6 @@ class GaussianPuff:
         self.time_stamps_sim = pd.date_range(self.sim_start, self.sim_end, freq=str(self.sim_dt)+"S")
         self.n_sim = len(self.time_stamps_sim) # number of simulation time steps
 
-        # by default, don't have puff duration since the C code computes the correct time cutoff for each sim
-        # if a puff default is set, you'll loose accuracy on puffs that remain on the grid for a long time
-        # due to atmospheric conditions
         if puff_duration == None:
             puff_duration = self.n_sim # ensures we don't overflow time index
 
@@ -187,7 +191,8 @@ class GaussianPuff:
             exit(-1)
 
         if puff_dt % sim_dt != 0:
-            print("ERROR IN INITIALIZATION: sim_dt must be a positive integer multiple of puff_dt")
+            print("ERROR IN INITIALIZATION: puff_dt must be a positive integer multiple of sim_dt")
+            exit(-1)
 
 
 
@@ -299,8 +304,8 @@ class GaussianPuff:
 
         self.GPC.simulate(self.ch4_sim)
 
-        # resample results to the obs_dt-resolution
-        self.ch4_obs = self._resample_simulation(self.ch4_sim, self.obs_dt)
+        # resample results to the output_dt-resolution
+        self.ch4_obs = self._resample_simulation(self.ch4_sim, self.output_dt)
         
         
         if self.quiet == False:
@@ -310,7 +315,7 @@ class GaussianPuff:
         
         return self.ch4_obs
     
-    def _resample_simulation(self, c_matrix, obs_dt, mode = 'mean'):
+    def _resample_simulation(self, c_matrix, resample_dt, mode = 'mean'):
         '''
         Resample the simulation results 
         Inputs:
@@ -328,9 +333,9 @@ class GaussianPuff:
 
         df = pd.DataFrame(c_matrix, index = self.time_stamps_sim)
         if mode == 'mean':
-            df = df.resample(str(obs_dt)+'S').mean()
+            df = df.resample(str(resample_dt)+'S').mean()
         elif mode == 'resample':
-            df = df.resample(str(obs_dt)+'S').asfreq()
+            df = df.resample(str(resample_dt)+'S').asfreq()
         else:
             raise NotImplementedError(">>>>> sim to obs resampling mode") 
         
