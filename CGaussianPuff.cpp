@@ -263,8 +263,6 @@ public:
         Vector X_shift = X.array()-x0-x_min;
         Vector Y_shift = Y.array()-y0-y_min;
 
-        Eigen::Matrix2Xd rotated(2, X_shift.size());
-
         X_rot = X_r[0] + X_shift.array()*v[0] + Y_shift.array()*vp[0];
         Y_rot = X_r[1] + X_shift.array()*v[1] + Y_shift.array()*vp[1];
     }
@@ -752,6 +750,8 @@ public:
 
 private:
 
+    const double deg_to_rad_factor = M_PI/180.0;
+
     void setSourceCoordinates(int source_index){
         x0 = source_coordinates(source_index, 0);
         y0 = source_coordinates(source_index, 1);
@@ -767,8 +767,7 @@ private:
     // convert wind direction (degrees) to the angle (radians) between the wind vector and positive x-axis
     double windDirectionToAngle(double wd){
         double theta = wd - 270;
-        if(theta < 0) theta = theta + 360;
-        theta = theta*(M_PI/180.0); // convert to radians
+        theta = theta*deg_to_rad_factor;
 
         return theta;
     }

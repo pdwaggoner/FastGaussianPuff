@@ -557,6 +557,8 @@ public:
 
 private:
 
+    const double deg_to_rad_factor = M_PI/180.0;
+
     static double fastExp(double x){
         constexpr double a = (1ll << 52) / 0.6931471805599453;
         constexpr double b = (1ll << 52) * (1023 - 0.04367744890362246);
@@ -590,8 +592,7 @@ private:
     // convert wind direction (degrees) to the angle (radians) between the wind vector and positive x-axis
     double windDirectionToAngle(double wd){
         double theta = wd-270;
-        if(theta < 0) theta = theta + 360;
-        theta = theta*(M_PI/180.0); // convert to radians
+        theta = theta*deg_to_rad_factor;
 
         return theta;
     }
