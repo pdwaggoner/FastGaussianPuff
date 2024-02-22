@@ -102,14 +102,15 @@ class GaussianPuff:
 
         self.quiet = quiet
 
-        ns = (simulation_end-simulation_start).total_seconds() + 60 # +1 minute for (end-start) + 1
-        self.n_obs = floor(ns/obs_dt) # number of observed data points we have
+        ns = (simulation_end-simulation_start).total_seconds()
+        self.n_obs = floor(ns/obs_dt) + 1 # number of observed data points we have
+        self.n_out = floor(ns/self.output_dt)
 
         # resample the wind data from obs_dt to the simulation resolution sim_dt
         self._interpolate_wind_data(wind_speeds, wind_directions, puff_dt, simulation_start, simulation_end)
 
         # save timeseries of simulation resolution so we can resample back to observation later
-        self.time_stamps_sim = pd.date_range(self.sim_start, self.sim_end, freq=str(self.sim_dt)+"S")
+        self.time_stamps_sim = pd.date_range(self.sim_start, self.sim_end - datetime.timedelta(seconds=1), freq=str(self.sim_dt)+"S")
         self.n_sim = len(self.time_stamps_sim) # number of simulation time steps
 
         if puff_duration == None:
