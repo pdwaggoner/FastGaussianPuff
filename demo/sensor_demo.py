@@ -2,18 +2,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+Created on Mon Oct 10 11:20:41 2022
+
+@author: mengjia, rykerfish
+"""
 
 #%% Imports
 import pandas as pd
 import numpy as np
-
 import sys
 utility_dir = '../'
 sys.path.insert(0, utility_dir)
 from utilities import wind_synthesizer
 bin_dir = '../bin' # by default, makefile stores the .so file here. needs to be on the python path to get imported.
 sys.path.insert(0, bin_dir)
-from GaussianPuff import GaussianPuff as GP
+from GaussianPuff import GaussianPuff as sensor_puff
+
+# for plotting
+import matplotlib.pylab as plt
 
 
 # Load in data
@@ -55,22 +62,19 @@ else:
 
 ############### all of the above is code that just reads in some experimental wind data ##################
 
-
-########################### grid demo ############################
+########################### sensor demo ############################
 # IMPORTANT: the wind data is on 1min resolution, so obs_dt = 60 seconds
 # the wind data gets resampled to sim_dt when the constructor for the python code is called.
 
-
 # set simulation parameters
 # IMPORTANT: obs_dt must be a positive integer multiple of sim_dt, and both sim_dt and puff_dt must be integers
-obs_dt, sim_dt, puff_dt = 60, 1, 1 # [seconds]
+obs_dt, sim_dt, puff_dt = 60, 1, 1
 
 # start and end times at minute resolution. Needs to be in the local timezone of where we're simulating
 # e.g. if we're simulating a site in England, it needs to be in UTC.
 # if we're simulating a site in Colorado, it should be in MST/MDT
-start = pd.to_datetime('2022-02-22 01:33:22') # source: 4T-11
-end = pd.to_datetime('2022-02-22 03:33:23')
-
+start = pd.to_datetime('2022-03-03 10:22:00')
+end = pd.to_datetime('2022-03-03 11:52:00')
 
 ## extract wind data corresponding to start and end times
 idx_0 = pd.Index(time_stamp_wind).get_indexer([start], method='nearest')[0]
@@ -78,36 +82,70 @@ idx_end = pd.Index(time_stamp_wind).get_indexer([end], method='nearest')[0]
 wind_speeds = ws_syn[idx_0 : idx_end+1]
 wind_directions = wd_syn[idx_0 : idx_end+1]
 
-# number of grid points
-x_num, y_num, z_num = 20, 20, 20
 
-# grid coordinates
-grid_coords = [-100, -80, 0, 100, 80, 24.0] # format is (x_min, y_min, z_min, x_max, y_max, z_max) in [m]
+# emission source
+source_coordinates = [[488163.338444176, 4493892.53205817, 2.0]] # format is [[x0,y0,z0]] in [m]. needs to be nested list for compatability with multi source (coming soon)
+emission_rate = [3.19] # emission rate for the single source above, [kg/hr]
 
+# sensors on the site. it is assumed that these encase the source coordinates.
+sensor_coordinates = [[488164.98285821447, 4493931.649887275, 2.4],
+    [488198.08502694493, 4493932.618594243, 2.4],
+    [488226.9012860443, 4493887.916890612, 2.4],
+    [488204.9825329503, 4493858.769131294, 2.4],
+    [488172.4989330686, 4493858.565324413, 2.4],
+    [488136.3904409793, 4493861.530987777, 2.4],
+    [488106.145508258, 4493896.167438727, 2.4],
+    [488133.15254321764, 4493932.355431944, 2.4]]
 
-# location and emission rate for emitting source
-source_coordinates = [[10, 20, 4.5]] # format is [[x0,y0,z0]] in [m]. needs to be nested list for compatability with multi source (coming soon)
-emission_rate = [3] # emission rate for the single source above, [kg/hr]
-
-grid_puff = GP(obs_dt, sim_dt, puff_dt,
-                start, end,
-                source_coordinates, emission_rate,
-                wind_speeds, wind_directions, 
-                grid_coordinates=grid_coords,
-                nx=x_num, ny=y_num, nz=z_num,
-                unsafe=False, quiet=False
+sensor_puff = sensor_puff(obs_dt=obs_dt, sim_dt=sim_dt, puff_dt=puff_dt,
+                 simulation_start=start, simulation_end=end,
+                 source_coordinates=source_coordinates, emission_rates=emission_rate,
+                 wind_speeds=wind_speeds, wind_directions=wind_directions,
+                 using_sensors=True, sensor_coordinates=sensor_coordinates, 
+                 quiet=True # change to false for progress information
 )
 
-grid_puff.simulate()
+sensor_puff.simulate()
 
-temp = []
+#%% plotting
+t, n_sensors = np.shape(sensor_puff.ch4_obs) # (time, sensors)
+sensor_names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
-# flatten the concentration array for easier handling in matlab
-for i in range(grid_puff.n_obs):
-    temp.append(grid_puff.ch4_obs[i].ravel())
+fig, ax = plt.subplots(2, 4, figsize=(10,10))
+m = sensor_puff.ch4_obs.max()
+fig.supxlabel("Time from emission start (minutes)")
+fig.supylabel("Methane concentration (ppm)")
 
-# save all data for matlab (visualization.m script)
-np.savetxt("concentration.csv", temp)
-np.savetxt("X.csv", grid_puff.X)
-np.savetxt("Y.csv", grid_puff.Y)
-np.savetxt("Z.csv", grid_puff.Z)
+for i in range(0,n_sensors):
+
+    if i < 4:
+        row = 0
+        col = i
+    else:
+        row = 1
+        col = i - 4
+
+    times = np.arange(0, t)
+    
+    sensor_ch4 = sensor_puff.ch4_obs[:,i]
+
+    ax[row][col].plot(times, sensor_ch4)
+    ax[row][col].set_ylim(-1,m+2)
+    ax[row][col].set_title(sensor_names[i])
+
+    # if i == 1:
+    #     m = max(sensor_ch4)
+    #     ax[i-1].set_ylabel("Concentration (ppm)")
+    # else:
+    #     ax[i-1].set_yticks([])
+
+    # if i == 2:
+    #     ax[i-1].set_xlabel("Time step")
+
+    # ax[i-1].set_ylim(0,m+10)
+    # ax[i-1].set_aspect('auto')
+
+    # ax[i-1].set_title("Sensor at x=" +  str(20*i) + "m")
+
+
+fig.savefig("demo_sensors.png", format="png", dpi=500, bbox_inches="tight")
