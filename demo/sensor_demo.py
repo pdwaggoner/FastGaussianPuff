@@ -97,7 +97,7 @@ sensor_coordinates = [[488164.98285821447, 4493931.649887275, 2.4],
     [488106.145508258, 4493896.167438727, 2.4],
     [488133.15254321764, 4493932.355431944, 2.4]]
 
-sensor_puff = sensor_puff(obs_dt=obs_dt, sim_dt=sim_dt, puff_dt=puff_dt,
+sp = sensor_puff(obs_dt=obs_dt, sim_dt=sim_dt, puff_dt=puff_dt,
                  simulation_start=start, simulation_end=end,
                  source_coordinates=source_coordinates, emission_rates=emission_rate,
                  wind_speeds=wind_speeds, wind_directions=wind_directions,
@@ -105,14 +105,14 @@ sensor_puff = sensor_puff(obs_dt=obs_dt, sim_dt=sim_dt, puff_dt=puff_dt,
                  quiet=True # change to false for progress information
 )
 
-sensor_puff.simulate()
+sp.simulate()
 
 #%% plotting
-t, n_sensors = np.shape(sensor_puff.ch4_obs) # (time, sensors)
+t, n_sensors = np.shape(sp.ch4_obs) # (time, sensors)
 sensor_names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
 fig, ax = plt.subplots(2, 4, figsize=(10,10))
-m = sensor_puff.ch4_obs.max()
+m = sp.ch4_obs.max()
 fig.supxlabel("Time from emission start (minutes)")
 fig.supylabel("Methane concentration (ppm)")
 
@@ -127,25 +127,11 @@ for i in range(0,n_sensors):
 
     times = np.arange(0, t)
     
-    sensor_ch4 = sensor_puff.ch4_obs[:,i]
+    sensor_ch4 = sp.ch4_obs[:,i]
 
     ax[row][col].plot(times, sensor_ch4)
     ax[row][col].set_ylim(-1,m+2)
     ax[row][col].set_title(sensor_names[i])
-
-    # if i == 1:
-    #     m = max(sensor_ch4)
-    #     ax[i-1].set_ylabel("Concentration (ppm)")
-    # else:
-    #     ax[i-1].set_yticks([])
-
-    # if i == 2:
-    #     ax[i-1].set_xlabel("Time step")
-
-    # ax[i-1].set_ylim(0,m+10)
-    # ax[i-1].set_aspect('auto')
-
-    # ax[i-1].set_title("Sensor at x=" +  str(20*i) + "m")
 
 
 fig.savefig("demo_sensors.png", format="png", dpi=500, bbox_inches="tight")
