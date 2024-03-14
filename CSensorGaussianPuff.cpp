@@ -172,6 +172,40 @@ public:
         return corner;
     }
 
+        double calculatePlumeTravelTime(double thresh_xy, double ws){
+
+        // max sized plume centered on source
+        Vector2d box_min(-thresh_xy, -thresh_xy);
+        Vector2d box_max(thresh_xy, thresh_xy);
+
+        Vector2d grid_min(x_min, y_min); // implicit grid based on sensor positions
+        Vector2d grid_max(x_max, y_max);
+
+        Vector2d origin(0,0);
+
+        Vector2d rayDir(cosine, -sine);
+        Vector2d invRayDir = rayDir.cwiseInverse();
+
+        // finding the last corner of the threshold box to leave the grid
+        Vector2d box_times = AABB(box_min, box_max, origin, invRayDir); // find where ray intersects box
+        Vector2d backward_collision = box_times[0]*rayDir; // where backwards ray intersects with an edge of the box
+        Vector2d box_corner = findNearestCorner(box_min, box_max, backward_collision);
+
+        // find the corner of the grid that the threshold must pass based on the wind direction
+        Vector2d grid_middle = 0.5*(grid_max-grid_min).array() + grid_min.array();
+        Vector2d grid_times = AABB(grid_min, grid_max, grid_middle, invRayDir);
+        Vector2d forward_collision = grid_times[1]*rayDir + grid_middle;
+        Vector2d grid_corner = findNearestCorner(grid_min, grid_max, forward_collision);
+
+        // compute travel time between the two corners
+        Vector2d distance = (grid_corner-box_corner).cwiseAbs();
+        invRayDir = invRayDir.cwiseAbs();
+        double travelDistance = (distance.array()*invRayDir.array()).minCoeff();
+        double travelTime = travelDistance/ws;
+
+        return travelTime;
+    }
+
     /* Computes Pasquill stability class
     Inputs:
         wind_speed: [m/s]
@@ -366,41 +400,6 @@ public:
                 }
             }
         }
-    }
-
-
-    double calculatePlumeTravelTime(double thresh_xy, double ws){
-
-        // max sized plume centered on source
-        Vector2d box_min(-thresh_xy, -thresh_xy);
-        Vector2d box_max(thresh_xy, thresh_xy);
-
-        Vector2d grid_min(x_min, y_min); // implicit grid based on sensor positions
-        Vector2d grid_max(x_max, y_max);
-
-        Vector2d origin(0,0);
-
-        Vector2d rayDir(cosine, -sine);
-        Vector2d invRayDir = rayDir.cwiseInverse();
-
-        // finding the last corner of the threshold box to leave the grid
-        Vector2d box_times = AABB(box_min, box_max, origin, invRayDir); // find where ray intersects box
-        Vector2d backward_collision = box_times[0]*rayDir; // where backwards ray intersects with an edge of the box
-        Vector2d box_corner = findNearestCorner(box_min, box_max, backward_collision);
-
-        // find the corner of the grid that the threshold must pass based on the wind direction
-        Vector2d grid_middle = 0.5*(grid_max-grid_min).array() + grid_min.array();
-        Vector2d grid_times = AABB(grid_min, grid_max, grid_middle, invRayDir);
-        Vector2d forward_collision = grid_times[1]*rayDir + grid_middle;
-        Vector2d grid_corner = findNearestCorner(grid_min, grid_max, forward_collision);
-
-        // compute travel time between the two corners
-        Vector2d distance = (grid_corner-box_corner).cwiseAbs();
-        invRayDir = invRayDir.cwiseAbs();
-        double travelDistance = (distance.array()*invRayDir.array()).minCoeff();
-        double travelTime = travelDistance/ws;
-
-        return travelTime;
     }
 
     void GaussianPuffEquation(

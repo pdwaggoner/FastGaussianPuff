@@ -33,6 +33,7 @@ public:
     int puff_duration;
 
     const Vector X, Y, Z;
+    Matrix stackedGrid;
     const Vector wind_speeds, wind_directions;
     Vector X_rot, Y_rot;
     Vector sigma_y, sigma_z;
@@ -87,6 +88,8 @@ public:
     sim_dt(sim_dt), puff_dt(puff_dt), puff_duration(puff_duration), wind_speeds(wind_speeds), wind_directions(wind_directions),
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
+
+        stackedGrid.resize(2, X.size());
 
         if(unsafe){
             if (!quiet) std::cout << "RUNNING IN UNSAFE MODE\n";
@@ -252,20 +255,10 @@ public:
         R << cosine, -sine,
             sine, cosine;
 
-        Eigen::Vector2d X0;
-        X0 << x_min, y_min;
+        Matrix R_g = R*stackedGrid;
 
-        Eigen::Vector2d v = R.col(0);
-        Eigen::Vector2d vp = R.col(1);
-
-        Eigen::Vector2d X_r = R*X0;
-
-        // shifted to be centered at the source then bumped up to start at 0 to align with indexing
-        Vector X_shift = X.array()-x0-x_min;
-        Vector Y_shift = Y.array()-y0-y_min;
-
-        X_rot = X_r[0] + X_shift.array()*v[0] + Y_shift.array()*vp[0];
-        Y_rot = X_r[1] + X_shift.array()*v[1] + Y_shift.array()*vp[1];
+        X_rot = R_g.row(0);
+        Y_rot = R_g.row(1);
     }
 
     /* Axis Aligned Bounding Box algorithm. Used to compute the intersections between a ray (wind direction) and a square.
@@ -361,7 +354,7 @@ public:
         Vector2d box_corner = findNearestCorner(box_min, box_max, backward_collision);
 
         // find the corner of the grid that the threshold must pass based on the wind direction
-        Vector2d grid_middle = (grid_max-grid_min).array()/2 + grid_min.array();
+        Vector2d grid_middle = 0.5*(grid_max-grid_min).array() + grid_min.array();
         Vector2d grid_times = AABB(grid_min, grid_max, grid_middle, invRayDir);
         Vector2d forward_collision = grid_times[1]*rayDir + grid_middle;
         Vector2d grid_corner = findNearestCorner(grid_min, grid_max, forward_collision);
@@ -757,6 +750,11 @@ private:
         x0 = source_coordinates(source_index, 0);
         y0 = source_coordinates(source_index, 1);
         z0 = source_coordinates(source_index, 2);
+
+        Vector X_shift = X.array() - x0;
+        Vector Y_shift = Y.array() - y0;
+
+        stackedGrid << X_shift.transpose(), Y_shift.transpose();
 
         x_min = X.minCoeff() - x0;
         y_min = Y.minCoeff() - y0;
