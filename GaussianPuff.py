@@ -26,7 +26,7 @@ class GaussianPuff:
                  puff_duration = 1200,
                  exp_threshold_tolerance = 1e-9,
                  conversion_factor = 1e6*1.524,
-                 unsafe=False, quiet=False):
+                 unsafe=False, quiet=True):
         
         '''
         Inputs: 

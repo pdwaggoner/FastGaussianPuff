@@ -52,7 +52,8 @@ public:
 
     bool quiet;
 
-    const double two_pi_three_halves = std::pow(2*M_PI, 1.5);
+    // const double two_pi_three_halves = std::pow(2*M_PI, 1.5);
+    const double one_over_two_pi_three_halves = 1/std::pow(2*M_PI, 1.5);
     double cosine; // store value of cosine/sine so we don't have to evaluate it across different functions
     double sine;
 
@@ -220,25 +221,25 @@ public:
                     if (x < 0.1) {
                         a = 122.800;
                         b = 0.94470;
-                    } else if (x >= 0.1 && x < 0.15) {
+                    } else if (x < 0.15) {
                         a = 158.080;
                         b = 1.05420;
-                    } else if (x >= 0.15 && x < 0.20) {
+                    } else if (x < 0.20) {
                         a = 170.220;
                         b = 1.09320;
-                    } else if (x >= 0.20 && x < 0.25) {
+                    } else if (x < 0.25) {
                         a = 179.520;
                         b = 1.12620;
-                    } else if (x >= 0.25 && x < 0.30) {
+                    } else if (x < 0.30) {
                         a = 217.410;
                         b = 1.26440;
-                    } else if (x >= 0.30 && x < 0.40) {
+                    } else if (x < 0.40) {
                         a = 258.890;
                         b = 1.40940;
-                    } else if (x >= 0.40 && x < 0.50) {
+                    } else if (x < 0.50) {
                         a = 346.750;
                         b = 1.72830;
-                    } else if (x >= 0.50 && x < 3.11) {
+                    } else if (x < 3.11) {
                         a = 453.850;
                         b = 2.11660;
                     } else {
@@ -250,7 +251,7 @@ public:
                     if (x < 0.2) {
                         a = 90.673;
                         b = 0.93198;
-                    } else if (x >= 0.2 && x < 0.4) {
+                    } else if (x < 0.4) {
                         a = 98.483;
                         b = 0.98332;
                     } else {
@@ -268,16 +269,16 @@ public:
                     if (x < 0.3) {
                         a = 34.459;
                         b = 0.86974;
-                    } else if (x >= 0.3 && x < 1) {
+                    } else if (x < 1) {
                         a = 32.093;
                         b = 0.81066;
-                    } else if (x >= 1 && x < 3) {
+                    } else if (x < 3) {
                         a = 32.093;
                         b = 0.64403;
-                    } else if (x >= 3 && x < 10) {
+                    } else if (x < 10) {
                         a = 33.504;
                         b = 0.60486;
-                    } else if (x >= 10 && x < 30) {
+                    } else if (x < 30) {
                         a = 36.650;
                         b = 0.56589;
                     } else {
@@ -290,25 +291,25 @@ public:
                     if (x < 0.1) {
                         a = 24.260;
                         b = 0.83660;
-                    } else if (x >= 0.1 && x < 0.3) {
+                    } else if (x < 0.3) {
                         a = 23.331;
                         b = 0.81956;
-                    } else if (x >= 0.3 && x < 1) {
+                    } else if (x < 1) {
                         a = 21.628;
                         b = 0.75660;
-                    } else if (x >= 1 && x < 2) {
+                    } else if (x < 2) {
                         a = 21.628;
                         b = 0.63077;
-                    } else if (x >= 2 && x < 4) {
+                    } else if (x < 4) {
                         a = 22.534;
                         b = 0.57154;
-                    } else if (x >= 4 && x < 10) {
+                    } else if (x < 10) {
                         a = 24.703;
                         b = 0.50527;
-                    } else if (x >= 10 && x < 20) {
+                    } else if (x < 20) {
                         a = 26.970;
                         b = 0.46173;
-                    } else if (x >= 20 && x < 40) {
+                    } else if (x < 40) {
                         a = 35.420;
                         b = 0.37615;
                     } else {
@@ -321,28 +322,28 @@ public:
                     if (x < 0.2) {
                         a = 15.209;
                         b = 0.81558;
-                    } else if (x >= 0.2 && x < 0.7) {
+                    } else if (x < 0.7) {
                         a = 14.457;
                         b = 0.78407;
-                    } else if (x >= 0.7 && x < 1) {
+                    } else if (x < 1) {
                         a = 13.953;
                         b = 0.68465;
-                    } else if (x >= 1 && x < 2) {
+                    } else if (x < 2) {
                         a = 13.953;
                         b = 0.63227;
-                    } else if (x >= 2 && x < 3) {
+                    } else if (x < 3) {
                         a = 14.823;
                         b = 0.54503;
-                    } else if (x >= 3 && x < 7) {
+                    } else if (x < 7) {
                         a = 16.187;
                         b = 0.46490;
-                    } else if (x >= 7 && x < 15) {
+                    } else if (x < 15) {
                         a = 17.836;
                         b = 0.41507;
-                    } else if (x >= 15 && x < 30) {
+                    } else if (x < 30) {
                         a = 22.651;
                         b = 0.32681;
-                    } else if (x >= 30 && x < 60) {
+                    } else if (x < 60) {
                         a = 27.074;
                         b = 0.27436;
                     } else {
@@ -388,7 +389,7 @@ public:
         Vector2d box_corner = findNearestCorner(box_min, box_max, backward_collision);
 
         // find the corner of the grid that the threshold must pass based on the wind direction
-        Vector2d grid_middle = (grid_max-grid_min).array()/2 + grid_min.array();
+        Vector2d grid_middle = 0.5*(grid_max-grid_min).array() + grid_min.array();
         Vector2d grid_times = AABB(grid_min, grid_max, grid_middle, invRayDir);
         Vector2d forward_collision = grid_times[1]*rayDir + grid_middle;
         Vector2d grid_corner = findNearestCorner(grid_min, grid_max, forward_collision);
@@ -411,7 +412,7 @@ public:
         double sigma_z_max = sigma_z.maxCoeff();
 
         // compute thresholds
-        double prefactor = (q * conversion_factor) / (two_pi_three_halves * sigma_y_max*sigma_y_max * sigma_z_max);
+        double prefactor = (q * conversion_factor*one_over_two_pi_three_halves) / (sigma_y_max*sigma_y_max * sigma_z_max);
         double threshold = std::log(exp_tol / (2*prefactor));
         double thresh_constant = std::sqrt(-2*threshold);
 
@@ -430,7 +431,7 @@ public:
         for(int i = 0; i <= n_time_steps; i++){
 
             double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
-            Vector X_rot_shift = X_rot.array() - wind_shift; // wind shift
+            Vector X_rot_shift = X_rot.array() - wind_shift; // advection
 
             for(int j = 0; j < N_sensors; j++){
 
@@ -469,7 +470,7 @@ public:
                 double term_4_b_arg = z_plus_by_sig*z_plus_by_sig;
                 double term_3_arg = (y_by_sig*y_by_sig + x_by_sig*x_by_sig);
 
-                double term_1 = q / (two_pi_three_halves * sigma_y[j]*sigma_y[j] * sigma_z[j]);
+                double term_1 = q*one_over_sig_y*one_over_sig_y*one_over_sig_z *one_over_two_pi_three_halves;
                 double term_4 = this->exp(-0.5*(term_3_arg + term_4_a_arg)) + this->exp(-0.5*(term_3_arg + term_4_b_arg));
 
                 ch4(i, j) += term_1 * term_4 * conversion_factor;
