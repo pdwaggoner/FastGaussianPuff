@@ -32,16 +32,19 @@ public:
     int sim_dt, puff_dt;
     int puff_duration;
 
-    int N_sensors;
     const Vector X, Y, Z;
-    const Vector wind_speeds, wind_directions;
     Vector X_rot, Y_rot;
+    Matrix stackedGrid;
+    int N_points;
+
+    const Vector wind_speeds, wind_directions;
     Vector sigma_y, sigma_z;
+
     time_t sim_start, sim_end;
     Matrix source_coordinates;
     Vector emission_strengths;
-    double x0, y0, z0; // source coordintaes for curent source
-    Matrix s; // shifted sensor coordinates for current source
+
+    double x0, y0, z0; // current iteration's source coordinates
     double x_min, y_min; // current mins for the grid centered at the current source
     double x_max, y_max; 
 
@@ -52,7 +55,6 @@ public:
 
     bool quiet;
 
-    // const double two_pi_three_halves = std::pow(2*M_PI, 1.5);
     const double one_over_two_pi_three_halves = 1/std::pow(2*M_PI, 1.5);
     double cosine; // store value of cosine/sine so we don't have to evaluate it across different functions
     double sine;
@@ -82,12 +84,12 @@ public:
                     Matrix source_coordinates, Vector emission_strengths,
                     double conversion_factor, double exp_tol,
                     bool unsafe, bool quiet)
-    : X(X), Y(Y), Z(Z), N_sensors(N_sensors),
+    : X(X), Y(Y), Z(Z), N_points(N_sensors),
     sim_dt(sim_dt), puff_dt(puff_dt), puff_duration(puff_duration), wind_speeds(wind_speeds), wind_directions(wind_directions),
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
 
-        s.resize(2, X.size());
+        stackedGrid.resize(2, X.size());
 
         if(unsafe){
             if (!quiet) std::cout << "RUNNING IN UNSAFE MODE\n";
@@ -97,8 +99,8 @@ public:
         }
 
 
-        sigma_y = Vector(N_sensors);
-        sigma_z = Vector(N_sensors);
+        sigma_y = Vector(N_points);
+        sigma_z = Vector(N_points);
 
         this->sim_start = std::chrono::system_clock::to_time_t(sim_start);
         this->sim_end = std::chrono::system_clock::to_time_t(sim_end);
@@ -110,16 +112,16 @@ public:
     Returns:
         None, but fills X_rot and Y_rot with the rotated grids.
     */
-    void rotateSensors(RefVector X_rot, RefVector Y_rot){
+    void rotatePoints(RefVector X_rot, RefVector Y_rot){
 
         Eigen::Matrix2d R;
         R << cosine, -sine,
             sine, cosine;
 
-        Matrix R_s = R*s;
+        Matrix R_g = R*stackedGrid;
 
-        X_rot = R_s.row(0);
-        Y_rot = R_s.row(1);
+        X_rot = R_g.row(0);
+        Y_rot = R_g.row(1);
     }
 
     /* Axis Aligned Bounding Box algorithm. Used to compute the intersections between a ray (wind direction) and a square.
@@ -402,6 +404,17 @@ public:
         }
     }
 
+    /* Evaluates the Gaussian Puff equation on the grids. 
+    Inputs:
+        q: Total emission corresponding to this puff (kg)
+        ws, wind speed (m/s)
+        X_rot, Y_rot: rotated X and Y grids. The Z grid isn't rotated so the member variable is used repeatedly.
+        ts: time series the puff is live for. 
+        c: 2D concentration array. The first index represents the time step, the second index represents the flattened
+        spatial index.
+    Returns:
+        none, but the concentrations are added into the concentration array.
+    */
     void GaussianPuffEquation(
         double q, double ws,
         RefVector X_rot, RefVector Y_rot,
@@ -432,7 +445,7 @@ public:
             double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
             Vector X_rot_shift = X_rot.array() - wind_shift; // advection
 
-            for(int j = 0; j < N_sensors; j++){
+            for(int j = 0; j < N_points; j++){
 
                 // Skips upwind sensors since sigma_{y,z} = -1 for upwind points
                 if (sigma_y[j] < 0 || sigma_z[j] < 0) {
@@ -456,7 +469,7 @@ public:
                     continue;
                 }
 
-                 // terms are written in a way to minimize divisions and exp evaluations
+                // terms are written in a way to minimize divisions and exp evaluations
                 double one_over_sig_y = 1/sigma_y[j];
                 double one_over_sig_z = 1/sigma_z[j];
 
@@ -469,11 +482,10 @@ public:
                 double term_4_b_arg = z_plus_by_sig*z_plus_by_sig;
                 double term_3_arg = (y_by_sig*y_by_sig + x_by_sig*x_by_sig);
 
-                double term_1 = q*one_over_sig_y*one_over_sig_y*one_over_sig_z *one_over_two_pi_three_halves;
+                double term_1 = q*one_over_two_pi_three_halves*one_over_sig_y*one_over_sig_y*one_over_sig_z;
                 double term_4 = this->exp(-0.5*(term_3_arg + term_4_a_arg)) + this->exp(-0.5*(term_3_arg + term_4_b_arg));
 
                 ch4(i, j) += term_1 * term_4 * conversion_factor;
-
             }
         }
     }
@@ -498,7 +510,7 @@ public:
         Vector Y_rot(Y.size());
 
         // rotates X and Y grids, stores in X_rot and Y_rot
-        rotateSensors(X_rot, Y_rot);
+        rotatePoints(X_rot, Y_rot);
 
         char stability_class = stabilityClassifier(ws, hour);
 
@@ -506,8 +518,8 @@ public:
         getSigmaCoefficients(stability_class, X_rot);
 
         GaussianPuffEquation(q, ws,
-                                X_rot, Y_rot,
-                                ch4);
+                            X_rot, Y_rot,
+                            ch4);
     }
 
     /* Simulation time loop
@@ -533,22 +545,22 @@ public:
         int puff_lifetime = ceil(puff_duration/sim_dt);
         int ratio = puff_dt/sim_dt;
 
-        for(int t = 0; t < n_puffs; t++){
+        for(int p = 0; p < n_puffs; p++){
             
             // keeps track of current time. needed to compute stability class
             tm puff_start = *localtime(&current_time);
             current_time += puff_dt;
 
             // bounds check on time
-            if(t*ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-t*ratio;
+            if(p*ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-p*ratio;
 
-            double theta = windDirectionToAngle(wind_directions[t]);
+            double theta = windDirectionToAngle(wind_directions[p]);
 
             // computes concentration timeseries for this puff
-            concentrationPerPuff(emission_per_puff, theta, wind_speeds[t], 
-                                    puff_start.tm_hour, ch4.middleRows(t*ratio, puff_lifetime));
+            concentrationPerPuff(emission_per_puff, theta, wind_speeds[p], 
+                                    puff_start.tm_hour, ch4.middleRows(p*ratio, puff_lifetime));
             
-            if(!quiet && floor(n_puffs*report_ratio) == t){
+            if(!quiet && floor(n_puffs*report_ratio) == p){
                 std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
                 report_ratio += 0.1;
             }
@@ -581,7 +593,7 @@ private:
         Vector X_shift = X.array() - x0;
         Vector Y_shift = Y.array() - y0;
 
-        s << X_shift.transpose(), Y_shift.transpose();
+        stackedGrid << X_shift.transpose(), Y_shift.transpose();
 
         x_min = X.minCoeff() - x0;
         y_min = Y.minCoeff() - y0;

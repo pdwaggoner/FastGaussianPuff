@@ -33,15 +33,19 @@ public:
     int puff_duration;
 
     const Vector X, Y, Z;
-    Matrix stackedGrid;
-    const Vector wind_speeds, wind_directions;
     Vector X_rot, Y_rot;
-    Vector sigma_y, sigma_z;
+    Matrix stackedGrid;
     int nx, ny, nz;
     double dx, dy, dz;
+    int N_points;
+
+    const Vector wind_speeds, wind_directions;
+    Vector sigma_y, sigma_z;
+
     time_t sim_start, sim_end;
     Matrix source_coordinates;
     Vector emission_strengths;
+
     double x0, y0, z0; // current iteration's source coordinates
     double x_min, y_min; // current mins for the grid centered at the current source
     double x_max, y_max; 
@@ -53,7 +57,6 @@ public:
 
     bool quiet;
 
-    // const double two_pi_three_halves = std::pow(2*M_PI, 1.5);
     const double one_over_two_pi_three_halves = 1/std::pow(2*M_PI, 1.5);
     double cosine; // store value of cosine/sine so we don't have to evaluate it across different functions
     double sine;
@@ -89,6 +92,8 @@ public:
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
 
+        N_points = nx*ny*nz;
+
         stackedGrid.resize(2, X.size());
 
         if(unsafe){
@@ -103,8 +108,8 @@ public:
         dy = gridSpacing[1];
         dz = gridSpacing[2];
 
-        sigma_y = Vector(nx*ny*nz);
-        sigma_z = Vector(nx*ny*nz);
+        sigma_y = Vector(N_points);
+        sigma_z = Vector(N_points);
 
         this->sim_start = std::chrono::system_clock::to_time_t(sim_start);
         this->sim_end = std::chrono::system_clock::to_time_t(sim_end);
@@ -249,7 +254,7 @@ public:
     Returns:
         None, but fills X_rot and Y_rot with the rotated grids.
     */
-    void rotateGrids(RefVector X_rot, RefVector Y_rot){
+    void rotatePoints(RefVector X_rot, RefVector Y_rot){
 
         Eigen::Matrix2d R;
         R << cosine, -sine,
@@ -685,7 +690,7 @@ public:
         Vector Y_rot(Y.size());
 
         // rotates X and Y grids, stores in X_rot and Y_rot
-        rotateGrids(X_rot, Y_rot);
+        rotatePoints(X_rot, Y_rot);
 
         char stability_class = stabilityClassifier(ws, hour);
 
@@ -695,7 +700,7 @@ public:
         GaussianPuffEquation(q, ws,
                             X_rot, Y_rot,
                             ch4);
-}
+    }
 
     /* Simulation time loop
     Inputs:

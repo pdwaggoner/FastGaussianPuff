@@ -8,3 +8,7 @@ __pycache__
 *.so
 .vscode
 cmap/
+*.png
+
+# other
+workspace/
