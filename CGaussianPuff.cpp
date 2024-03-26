@@ -62,7 +62,9 @@ public:
     double sine;
 
     vec3d map_table; // precomputed map from the 3D meshgrid index to the 1D raveled index.
-    /* Constructor.
+
+
+    /* GRID Constructor.
     Inputs:
         X, Y, Z: Flattened versions of 3D meshgrids
         nx, ny, nz: number of points in each direction
@@ -326,24 +328,8 @@ public:
     double calculatePlumeTravelTime(double thresh_xy, 
                                     double ws){
 
-        // doesn't need z parameters since plume only moves in 2D. wind shift = 0 since plume hasn't moved
-        double wind_shift = 0;
-        std::vector<double> start_box = computeIndexBounds(thresh_xy, 0, 
-                                        wind_shift);
-
-        double i_min = start_box[0];
-        double i_max = start_box[1];
-        double j_min = start_box[2];
-        double j_max = start_box[3];
-
-        // corners of the threshold box
-        double box_min_x = x_min + i_min*dx;
-        double box_min_y = y_min + j_min*dy;
-        double box_max_x = x_min + i_max*dx;
-        double box_max_y = y_min + j_max*dy;
-
-        Vector2d box_min(box_min_x, box_min_y);
-        Vector2d box_max(box_max_x, box_max_y);
+        Vector2d box_min(-thresh_xy, -thresh_xy);
+        Vector2d box_max(thresh_xy, thresh_xy);
 
         Vector2d grid_min(x_min, y_min);
         Vector2d grid_max(x_max, y_max);
@@ -609,6 +595,7 @@ public:
 
             // wind_shift is distance [m] plume has moved from source
             double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
+            Vector X_rot_shift = X_rot.array() - wind_shift; // advection
 
             std::vector<int> indices = getValidIndices(thresh_xy_max, thresh_z_max, 
                                         wind_shift);
@@ -623,11 +610,9 @@ public:
             thresh_xy_max = box_max_sig_y*thresh_constant;
             thresh_z_max = box_max_sig_z*thresh_constant;
 
-            Vector X_rot_shift = X_rot.array() - wind_shift; // wind shift
-
             for (int j : indices) {
 
-                // Skips upwind grid cells since sigma_{y,z} = -1 for upwind points
+                // Skips upwind cells since sigma_{y,z} = -1 for upwind points
                 if (sigma_y[j] < 0 || sigma_z[j] < 0) {
                     continue;
                 }
@@ -745,6 +730,62 @@ public:
                 report_ratio += 0.1;
             }
         }
+    }
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////   SENSOR-SPECIFIC FUNCTIONS    //////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+    /* Constructor.
+    Inputs:
+        X, Y, Z: Flattened versions of 3D meshgrids
+        nx, ny, nz: number of points in each direction
+        sim_dt: time between simulation time steps (MUST BE INTEGER NUMBER OF SECONDS)
+        puff_dt: time between creation of two puffs
+        puff_duration: maximum number of seconds puff can be live for. 
+        sim_start, sim_end: datetime stamps for when to start and end the emission
+        wind_speeds, wind_directions: timeseries for wind speeds (m/s) and directions (degrees) at sim_dt resolution
+        source_coordinates: source coordinates in (x,y,z) format for each source. size- (n_sources, 3)
+        emission_strengths: emission rates for each source (kg/hr). length: n_sources
+        conversion_factor: conversion between kg/m^3 to ppm for ch4
+        exp_tol: tolerance for the exponential thresholding applied to the Gaussians. Lower tolerance means less accuracy
+        but a faster execution. Runtime and accuracy are both very sensitive to this parameter.
+        quiet: false if you want output for simulation completeness. true for silent simulation.
+    */
+    CGaussianPuff(Vector X, Vector Y, Vector Z, 
+                    int N_sensors,
+                    int sim_dt, int puff_dt, int puff_duration,
+                    TimePoint sim_start, TimePoint sim_end,
+                    Vector wind_speeds, Vector wind_directions,
+                    Matrix source_coordinates, Vector emission_strengths,
+                    double conversion_factor, double exp_tol,
+                    bool unsafe, bool quiet)
+    : X(X), Y(Y), Z(Z), N_points(N_sensors),
+    sim_dt(sim_dt), puff_dt(puff_dt), puff_duration(puff_duration), wind_speeds(wind_speeds), wind_directions(wind_directions),
+    source_coordinates(source_coordinates), emission_strengths(emission_strengths),
+    conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
+
+        stackedGrid.resize(2, X.size());
+
+        if(unsafe){
+            if (!quiet) std::cout << "RUNNING IN UNSAFE MODE\n";
+            this->exp = &fastExp; 
+        } else {
+            this->exp = [](double x){return std::exp(x);};
+        }
+
+
+        sigma_y = Vector(N_points);
+        sigma_z = Vector(N_points);
+
+        this->sim_start = std::chrono::system_clock::to_time_t(sim_start);
+        this->sim_end = std::chrono::system_clock::to_time_t(sim_end);
     }
 
 private:

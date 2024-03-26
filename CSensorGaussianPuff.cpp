@@ -439,14 +439,15 @@ public:
             n_time_steps = ch4.rows() - 1;
         }
 
-        for(int i = 0; i <= n_time_steps; i++){
+        for (int i = n_time_steps; i >= 0; i--) {
 
+            // wind_shift is distance [m] plume has moved from source
             double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
             Vector X_rot_shift = X_rot.array() - wind_shift; // advection
 
-            for(int j = 0; j < N_points; j++){
+            for (int j = 0; j < N_points; j++) {
 
-                // Skips upwind sensors since sigma_{y,z} = -1 for upwind points
+                // Skips upwind cells since sigma_{y,z} = -1 for upwind points
                 if (sigma_y[j] < 0 || sigma_z[j] < 0) {
                     continue;
                 }
