@@ -65,8 +65,7 @@ public:
         nx, ny, nz: number of points in each direction
         sim_dt: time between simulation time steps (MUST BE INTEGER NUMBER OF SECONDS)
         puff_dt: time between creation of two puffs
-        puff_duration: maximum number of seconds puff can be live for. The default is no threshold, since the code
-            computes the correct cutoff time. Only add a puff duration if you need faster runtimes at the expense of accuracy.
+        puff_duration: maximum number of seconds puff can be live for. 
         sim_start, sim_end: datetime stamps for when to start and end the emission
         wind_speeds, wind_directions: timeseries for wind speeds (m/s) and directions (degrees) at sim_dt resolution
         source_coordinates: source coordinates in (x,y,z) format for each source. size- (n_sources, 3)
@@ -433,7 +432,7 @@ public:
 
         double t = calculatePlumeTravelTime(thresh_xy_max, ws); // number of seconds til plume leaves grid
 
-        int n_time_steps = ceil(t/sim_dt);
+        int n_time_steps = ceil(t/sim_dt); // rescale to unitless number of timesteps
 
         // bound check on time
         if(n_time_steps >= ch4.rows()){
@@ -493,7 +492,7 @@ public:
     /* Computes the concentration timeseries for a single puff.
     Inputs:
         q: Total emission corresponding to this puff (kg)
-        ws, wind speed (m/s)
+        ws, theta: wind speed (m/s) and wind direction (radians)
         hour: current hour of day (int)
         ch4: 2D concentration array. First index is time, second index is the flattened spatial index.
     Returns:

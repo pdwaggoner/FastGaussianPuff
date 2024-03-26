@@ -751,6 +751,20 @@ private:
 
     const double deg_to_rad_factor = M_PI/180.0;
 
+    static double fastExp(double x){
+        constexpr double a = (1ll << 52) / 0.6931471805599453;
+        constexpr double b = (1ll << 52) * (1023 - 0.04367744890362246);
+        x = a * x + b;
+
+        constexpr double c = (1ll << 52);
+        if (x < c)
+            x = 0.0;
+
+        uint64_t n = static_cast<uint64_t>(x);
+        std::memcpy(&x, &n, 8);
+        return x;
+    }
+
     void setSourceCoordinates(int source_index){
         x0 = source_coordinates(source_index, 0);
         y0 = source_coordinates(source_index, 1);
@@ -765,12 +779,11 @@ private:
         y_min = Y.minCoeff() - y0;
         x_max = X.maxCoeff() - x0;
         y_max = Y.maxCoeff() - y0;
-
     }
 
     // convert wind direction (degrees) to the angle (radians) between the wind vector and positive x-axis
     double windDirectionToAngle(double wd){
-        double theta = wd - 270;
+        double theta = wd-270;
         theta = theta*deg_to_rad_factor;
 
         return theta;
@@ -785,20 +798,6 @@ private:
         gridSpacing[2] = abs(Z[1] - Z[0]); // dz
 
         return gridSpacing;
-    }
-
-    static double fastExp(double x){
-        constexpr double a = (1ll << 52) / 0.6931471805599453;
-        constexpr double b = (1ll << 52) * (1023 - 0.04367744890362246);
-        x = a * x + b;
-
-        constexpr double c = (1ll << 52);
-        if (x < c)
-            x = 0.0;
-
-        uint64_t n = static_cast<uint64_t>(x);
-        std::memcpy(&x, &n, 8);
-        return x;
     }
 
     // maps 3d index to 1d raveled index in numpy 'ij' format meshgrids
