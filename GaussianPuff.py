@@ -10,7 +10,6 @@ import pandas as pd
 import datetime
 from math import floor
 import CGaussianPuff as C_GP
-import CSensorGaussianPuff as CS_GP
 
 class GaussianPuff:
     def __init__(self,
@@ -143,7 +142,7 @@ class GaussianPuff:
             self.Z = self.Z.ravel()
 
             # constructor for the c code
-            self.GPC = C_GP.CGaussianPuff(
+            self.GPC = C_GP.GridGaussianPuff(
                     self.X, self.Y, self.Z, 
                     self.nx, self.ny, self.nz, 
                     sim_dt, puff_dt, puff_duration,
@@ -162,7 +161,7 @@ class GaussianPuff:
                 self.Y.append(sensor[1])
                 self.Z.append(sensor[2])
 
-            self.GPC = CS_GP.CSensorGaussianPuff(
+            self.GPC = C_GP.SensorGaussianPuff(
                 self.X, self.Y, self.Z, 
                 self.N_points,
                 sim_dt, puff_dt, puff_duration,

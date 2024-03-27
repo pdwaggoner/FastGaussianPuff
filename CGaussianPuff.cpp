@@ -26,21 +26,19 @@ typedef std::vector<std::vector<std::vector<int> > > vec3d;
 typedef std::chrono::system_clock::time_point TimePoint;
 
 class CGaussianPuff{
-
-public:
-
+protected:
     int sim_dt, puff_dt;
     int puff_duration;
 
     const Vector X, Y, Z;
     Vector X_rot, Y_rot;
     Matrix stackedGrid;
-    int nx, ny, nz;
-    double dx, dy, dz;
     int N_points;
 
     const Vector wind_speeds, wind_directions;
     Vector sigma_y, sigma_z;
+
+    double thresh_xy_max, thresh_z_max;
 
     time_t sim_start, sim_end;
     Matrix source_coordinates;
@@ -61,10 +59,8 @@ public:
     double cosine; // store value of cosine/sine so we don't have to evaluate it across different functions
     double sine;
 
-    vec3d map_table; // precomputed map from the 3D meshgrid index to the 1D raveled index.
-
-
-    /* GRID Constructor.
+public:
+    /* Constructor.
     Inputs:
         X, Y, Z: Flattened versions of 3D meshgrids
         nx, ny, nz: number of points in each direction
@@ -80,8 +76,7 @@ public:
         but a faster execution. Runtime and accuracy are both very sensitive to this parameter.
         quiet: false if you want output for simulation completeness. true for silent simulation.
     */
-    CGaussianPuff(Vector X, Vector Y, Vector Z, 
-                    int nx, int ny, int nz, 
+    CGaussianPuff(Vector X, Vector Y, Vector Z, int N,
                     int sim_dt, int puff_dt, int puff_duration,
                     TimePoint sim_start, TimePoint sim_end,
                     Vector wind_speeds, Vector wind_directions,
@@ -89,12 +84,10 @@ public:
                     double conversion_factor, double exp_tol,
                     bool unsafe, bool quiet)
 
-    : X(X), Y(Y), Z(Z) , nx(nx), ny(ny), nz(nz), 
+    : X(X), Y(Y), Z(Z), N_points(N), 
     sim_dt(sim_dt), puff_dt(puff_dt), puff_duration(puff_duration), wind_speeds(wind_speeds), wind_directions(wind_directions),
     source_coordinates(source_coordinates), emission_strengths(emission_strengths),
     conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
-
-        N_points = nx*ny*nz;
 
         stackedGrid.resize(2, X.size());
 
@@ -105,150 +98,60 @@ public:
             this->exp = [](double x){return std::exp(x);};
         }
 
-        std::vector<double> gridSpacing = computeGridSpacing();
-        dx = gridSpacing[0];
-        dy = gridSpacing[1];
-        dz = gridSpacing[2];
-
         sigma_y = Vector(N_points);
         sigma_z = Vector(N_points);
 
         this->sim_start = std::chrono::system_clock::to_time_t(sim_start);
         this->sim_end = std::chrono::system_clock::to_time_t(sim_end);
+    }
 
-        // declares empty 3D vector of integers of size (nx, ny, nz)
-        vec3d map_table(ny, std::vector<std::vector<int>>(nx, std::vector<int>(nz)));
+    /* Simulation time loop
+    Inputs:
+        ch4: 2d array. First index represents simulation time steps, second index is flattened spatial index
+    Returns:
+        none, but the concentration is added directly to the ch4 array for all time steps
+    */
+    void simulate(RefMatrix ch4){
 
-        // precomputes the map from the 3D meshgrid index to the 1D raveled index.
-        // precomputed because the divisions in map() are too expensive to do repeatedly. 
-        for(int i = 0; i < nx; i++){
-            for(int j = 0; j < ny; j++){
-                for(int k = 0; k < nz; k++){
-                    // (i,j) index flipped since numpy's 'ij' indexing is being used on the meshgrids
-                    map_table[j][i][k] = map(i,j,k);
-                }
+        double emission_length = difftime(sim_end, sim_start);
+        int n_puffs = ceil(emission_length/puff_dt);
+
+        // later, for multisource: iterate over source coords
+        setSourceCoordinates(0);
+        double q = emission_strengths[0]/3600; // convert to kg/s
+
+        double emission_per_puff = q*puff_dt;
+
+        time_t current_time = sim_start;
+        double report_ratio = 0.1;
+
+        int puff_lifetime = ceil(puff_duration/sim_dt);
+        int ratio = puff_dt/sim_dt;
+
+        for(int p = 0; p < n_puffs; p++){
+            
+            // keeps track of current time. needed to compute stability class
+            tm puff_start = *localtime(&current_time);
+            current_time += puff_dt;
+
+            // bounds check on time
+            if(p*ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-p*ratio;
+
+            double theta = windDirectionToAngle(wind_directions[p]);
+
+            // computes concentration timeseries for this puff
+            concentrationPerPuff(emission_per_puff, theta, wind_speeds[p], 
+                                    puff_start.tm_hour, ch4.middleRows(p*ratio, puff_lifetime));
+            
+            if(!quiet && floor(n_puffs*report_ratio) == p){
+                std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
+                report_ratio += 0.1;
             }
         }
-        this->map_table = map_table;
     }
-
-    /*  Computes bounds on the grid indices based on where the Gaussian is located.
-    Inputs:
-        thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
-            dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
-        ws, wind speed (m/s)
-        t_i: time step (s)
-
-    Returns:
-        A vector of six doubles containing the lower and upper bounds on the i, j, and k indices. Note that these are
-        not rounded to integers as they're used in an intermediate calculation (see calculatePlumeTravelTime) and
-        roundind them early creates a rounding error.
-    */
-    std::vector<double> computeIndexBounds(double thresh_xy, double thresh_z,
-                                            double wind_shift){
-
-        Eigen::Matrix2d R;
-        R << cosine, -sine,
-            sine, cosine;
-
-        Eigen::Vector2d X0;
-        X0 << x_min, y_min;
-
-        Eigen::Vector2d v = R.col(0);
-        Eigen::Vector2d vp = R.col(1);
-
-        Eigen::Vector2d tw;
-        tw << wind_shift, 0;
-
-        Eigen::Vector2d X0_r = R*X0;
-        auto X0_rt = X0_r - tw;
-
-        double Xrt_dot_v = X0_rt.dot(v);
-        double Xrt_dot_vp = X0_rt.dot(vp);
-        double norm_sq_Xrt = X0_rt.dot(X0_rt);
-
-        double one_over_dx = 1/dx;
-        double one_over_dy = 1/dy;
-        double one_over_dz = 1/dz;
-
-        double i_lower = (-Xrt_dot_v - thresh_xy - 1)*one_over_dx;
-        double i_upper = (-Xrt_dot_v + thresh_xy + 1)*one_over_dx;
-
-        double j_lower = (-Xrt_dot_vp - thresh_xy - 1)*one_over_dy;
-        double j_upper = (-Xrt_dot_vp + thresh_xy + 1)*one_over_dy;
-
-        double k_lower = (-thresh_z + z0)*one_over_dz;
-        double k_upper = (thresh_z + z0)*one_over_dz;
-
-        return std::vector<double>{i_lower, i_upper, j_lower, j_upper, k_lower, k_upper};
-    }
-
-    /* Computes a list of indices to be evaluated based on the location of the Gaussian on the grid.
-    Inputs:
-        thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
-            dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
-        wind_shift: meters that the plume is shifted downwind at the current timestep
-        x0, y0, z0: coordinates of source (m)
-    Returns:
-        A list of indices to the flattened grids where the Gaussian equation should be evaluated.
-    */
-    std::vector<int> getValidIndices(double thresh_xy, double thresh_z,
-                                        double wind_shift){
-        
-        std::vector<double> indexBounds = computeIndexBounds(thresh_xy, thresh_z,
-                                                            wind_shift);
-
-        int i_lower = floor(indexBounds[0]);
-        int i_upper = ceil(indexBounds[1]);
-        int j_lower = floor(indexBounds[2]);
-        int j_upper = ceil(indexBounds[3]);
-        int k_lower = floor(indexBounds[4]);
-        int k_upper = ceil(indexBounds[5]);
-
-        // makes sure the computed index bounds are sensical and computes total number of cells in bounds
-        if(i_lower < 0) i_lower = 0;
-        if(i_upper > nx-1) i_upper = nx-1;
-
-        if(j_lower < 0) j_lower = 0;
-        if(j_upper > ny-1) j_upper = ny-1;
-
-        if(k_lower < 0) k_lower = 0;
-        if(k_upper > nz-1) k_upper = nz-1;
-
-        int i_count, j_count, k_count;
-        if(i_upper < i_lower || i_lower > i_upper){
-            return std::vector<int>(0);
-        } else{
-            i_count = i_upper-i_lower+1;
-        }
-
-        if(j_upper < j_lower || j_lower > j_upper){
-            return std::vector<int>(0);
-        } else{
-            j_count = j_upper-j_lower+1;
-        }
-
-        if(k_upper < k_lower){
-            return std::vector<int>(0);
-        } else{
-            k_count = k_upper-k_lower+1;
-        }
-
-        int cellCount = i_count*j_count*k_count;
-
-        std::vector<int> indices(cellCount);
-        int currentCell = 0;
-        for(int i = i_lower; i <= i_upper; i++){
-            for(int j = j_lower; j <= j_upper; j++){
-                for(int k = k_lower; k <= k_upper; k++){
-                    indices[currentCell] = map_table[j][i][k];
-                    currentCell++;
-                }
-            }
-        }
-
-        return indices;
-    }
+private:
+    // somewhat hacky way of making this act as an abstract function
+    virtual std::vector<int> coarseSpatialThreshold(double, double){ throw std::logic_error("Not implemented"); }
 
     /* Rotates the X and Y grids based on the current wind direction and source location.
     Inputs:
@@ -575,12 +478,12 @@ public:
         double sigma_z_max = sigma_z.maxCoeff();
 
         // compute thresholds
-        double prefactor = (q * conversion_factor*one_over_two_pi_three_halves) / (sigma_y_max*sigma_y_max * sigma_z_max);
+        double prefactor = (q * conversion_factor * one_over_two_pi_three_halves) / (sigma_y_max*sigma_y_max * sigma_z_max);
         double threshold = std::log(exp_tol / (2*prefactor));
         double thresh_constant = std::sqrt(-2*threshold);
 
-        double thresh_xy_max = sigma_y_max*thresh_constant;
-        double thresh_z_max = sigma_z_max*thresh_constant;
+        thresh_xy_max = sigma_y_max*thresh_constant;
+        thresh_z_max = sigma_z_max*thresh_constant;
 
         double t = calculatePlumeTravelTime(thresh_xy_max, ws); // number of seconds til plume leaves grid
 
@@ -595,20 +498,11 @@ public:
 
             // wind_shift is distance [m] plume has moved from source
             double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
+
+            // TODO move this so it doesn't get allocated every time step
             Vector X_rot_shift = X_rot.array() - wind_shift; // advection
 
-            std::vector<int> indices = getValidIndices(thresh_xy_max, thresh_z_max, 
-                                        wind_shift);
-
-            if(indices.empty()){
-                continue;
-            }
-
-            // shrinks the thresholds
-            double box_max_sig_y = sigma_y(indices).maxCoeff(); // max sigma of the current valid indices
-            double box_max_sig_z = sigma_z(indices).maxCoeff();
-            thresh_xy_max = box_max_sig_y*thresh_constant;
-            thresh_z_max = box_max_sig_z*thresh_constant;
+            std::vector<int> indices = coarseSpatialThreshold(wind_shift, thresh_constant);
 
             for (int j : indices) {
 
@@ -687,109 +581,6 @@ public:
                             ch4);
     }
 
-    /* Simulation time loop
-    Inputs:
-        ch4: 2d array. First index represents simulation time steps, second index is flattened spatial index
-    Returns:
-        none, but the concentration is added directly to the ch4 array for all time steps
-    */
-    void simulate(RefMatrix ch4){
-
-        double emission_length = difftime(sim_end, sim_start);
-        int n_puffs = ceil(emission_length/puff_dt);
-
-        // later, for multisource: iterate over source coords
-        setSourceCoordinates(0);
-        double q = emission_strengths[0]/3600; // convert to kg/s
-
-        double emission_per_puff = q*puff_dt;
-
-        time_t current_time = sim_start;
-        double report_ratio = 0.1;
-
-        int puff_lifetime = ceil(puff_duration/sim_dt);
-        int ratio = puff_dt/sim_dt;
-
-        for(int p = 0; p < n_puffs; p++){
-            
-            // keeps track of current time. needed to compute stability class
-            tm puff_start = *localtime(&current_time);
-            current_time += puff_dt;
-
-            // bounds check on time
-            if(p*ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-p*ratio;
-
-            double theta = windDirectionToAngle(wind_directions[p]);
-
-            // computes concentration timeseries for this puff
-            concentrationPerPuff(emission_per_puff, theta, wind_speeds[p], 
-                                    puff_start.tm_hour, ch4.middleRows(p*ratio, puff_lifetime));
-            
-            if(!quiet && floor(n_puffs*report_ratio) == p){
-                std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
-                report_ratio += 0.1;
-            }
-        }
-    }
-
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    //////////////////////////////////////   SENSOR-SPECIFIC FUNCTIONS    //////////////////////////////////////
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-    /* Constructor.
-    Inputs:
-        X, Y, Z: Flattened versions of 3D meshgrids
-        nx, ny, nz: number of points in each direction
-        sim_dt: time between simulation time steps (MUST BE INTEGER NUMBER OF SECONDS)
-        puff_dt: time between creation of two puffs
-        puff_duration: maximum number of seconds puff can be live for. 
-        sim_start, sim_end: datetime stamps for when to start and end the emission
-        wind_speeds, wind_directions: timeseries for wind speeds (m/s) and directions (degrees) at sim_dt resolution
-        source_coordinates: source coordinates in (x,y,z) format for each source. size- (n_sources, 3)
-        emission_strengths: emission rates for each source (kg/hr). length: n_sources
-        conversion_factor: conversion between kg/m^3 to ppm for ch4
-        exp_tol: tolerance for the exponential thresholding applied to the Gaussians. Lower tolerance means less accuracy
-        but a faster execution. Runtime and accuracy are both very sensitive to this parameter.
-        quiet: false if you want output for simulation completeness. true for silent simulation.
-    */
-    CGaussianPuff(Vector X, Vector Y, Vector Z, 
-                    int N_sensors,
-                    int sim_dt, int puff_dt, int puff_duration,
-                    TimePoint sim_start, TimePoint sim_end,
-                    Vector wind_speeds, Vector wind_directions,
-                    Matrix source_coordinates, Vector emission_strengths,
-                    double conversion_factor, double exp_tol,
-                    bool unsafe, bool quiet)
-    : X(X), Y(Y), Z(Z), N_points(N_sensors),
-    sim_dt(sim_dt), puff_dt(puff_dt), puff_duration(puff_duration), wind_speeds(wind_speeds), wind_directions(wind_directions),
-    source_coordinates(source_coordinates), emission_strengths(emission_strengths),
-    conversion_factor(conversion_factor), exp_tol(exp_tol), quiet(quiet) {
-
-        stackedGrid.resize(2, X.size());
-
-        if(unsafe){
-            if (!quiet) std::cout << "RUNNING IN UNSAFE MODE\n";
-            this->exp = &fastExp; 
-        } else {
-            this->exp = [](double x){return std::exp(x);};
-        }
-
-
-        sigma_y = Vector(N_points);
-        sigma_z = Vector(N_points);
-
-        this->sim_start = std::chrono::system_clock::to_time_t(sim_start);
-        this->sim_end = std::chrono::system_clock::to_time_t(sim_end);
-    }
-
-private:
-
     const double deg_to_rad_factor = M_PI/180.0;
 
     static double fastExp(double x){
@@ -830,6 +621,191 @@ private:
         return theta;
     }
 
+};
+
+class GridGaussianPuff : public CGaussianPuff {
+
+    int nx, ny, nz;
+    double dx, dy, dz;
+public:
+    GridGaussianPuff(Vector X, Vector Y, Vector Z, 
+                    int nx, int ny, int nz, 
+                    int sim_dt, int puff_dt, int puff_duration,
+                    TimePoint sim_start, TimePoint sim_end,
+                    Vector wind_speeds, Vector wind_directions,
+                    Matrix source_coordinates, Vector emission_strengths,
+                    double conversion_factor, double exp_tol,
+                    bool unsafe, bool quiet)
+
+        : CGaussianPuff(X, Y, Z, nx*ny*nz,
+                        sim_dt, puff_dt, puff_duration,
+                        sim_start, sim_end,
+                        wind_speeds, wind_directions,
+                        source_coordinates, emission_strengths,
+                        conversion_factor, exp_tol,
+                        unsafe, quiet), 
+
+        nx(nx), ny(ny), nz(nz)
+    {
+
+        std::vector<double> gridSpacing = computeGridSpacing();
+        dx = gridSpacing[0];
+        dy = gridSpacing[1];
+        dz = gridSpacing[2];
+
+        // declares empty 3D vector of integers of size (nx, ny, nz)
+        vec3d map_table(ny, std::vector<std::vector<int>>(nx, std::vector<int>(nz)));
+
+        // precomputes the map from the 3D meshgrid index to the 1D raveled index.
+        // precomputed because the divisions in map() are too expensive to do repeatedly. 
+        for(int i = 0; i < nx; i++){
+            for(int j = 0; j < ny; j++){
+                for(int k = 0; k < nz; k++){
+                    // (i,j) index flipped since numpy's 'ij' indexing is being used on the meshgrids
+                    map_table[j][i][k] = map(i,j,k);
+                }
+            }
+        }
+        this->map_table = map_table;
+
+    }
+
+private:
+    vec3d map_table; // precomputed map from the 3D meshgrid index to the 1D raveled index.
+    
+    std::vector<int> coarseSpatialThreshold(double wind_shift, double thresh_constant) override {
+
+        std::vector<int> indices = getValidIndices(thresh_xy_max, thresh_z_max, wind_shift);
+
+        if(!indices.empty()){
+            // shrinks the thresholds
+            double box_max_sig_y = sigma_y(indices).maxCoeff(); // max sigma of the current valid indices
+            double box_max_sig_z = sigma_z(indices).maxCoeff();
+            thresh_xy_max = box_max_sig_y*thresh_constant;
+            thresh_z_max = box_max_sig_z*thresh_constant;
+        }
+
+        return indices;
+    }
+
+    /*  Computes bounds on the grid indices based on where the Gaussian is located.
+    Inputs:
+        thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
+            dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
+        ws, wind speed (m/s)
+        t_i: time step (s)
+
+    Returns:
+        A vector of six doubles containing the lower and upper bounds on the i, j, and k indices. Note that these are
+        not rounded to integers as they're used in an intermediate calculation (see calculatePlumeTravelTime) and
+        roundind them early creates a rounding error.
+    */
+    std::vector<double> computeIndexBounds(double thresh_xy, double thresh_z,
+                                            double wind_shift){
+
+        Eigen::Matrix2d R;
+        R << cosine, -sine,
+            sine, cosine;
+
+        Eigen::Vector2d X0;
+        X0 << x_min, y_min;
+
+        Eigen::Vector2d v = R.col(0);
+        Eigen::Vector2d vp = R.col(1);
+
+        Eigen::Vector2d tw;
+        tw << wind_shift, 0;
+
+        Eigen::Vector2d X0_r = R*X0;
+        auto X0_rt = X0_r - tw;
+
+        double Xrt_dot_v = X0_rt.dot(v);
+        double Xrt_dot_vp = X0_rt.dot(vp);
+        double norm_sq_Xrt = X0_rt.dot(X0_rt);
+
+        double one_over_dx = 1/dx;
+        double one_over_dy = 1/dy;
+        double one_over_dz = 1/dz;
+
+        double i_lower = (-Xrt_dot_v - thresh_xy - 1)*one_over_dx;
+        double i_upper = (-Xrt_dot_v + thresh_xy + 1)*one_over_dx;
+
+        double j_lower = (-Xrt_dot_vp - thresh_xy - 1)*one_over_dy;
+        double j_upper = (-Xrt_dot_vp + thresh_xy + 1)*one_over_dy;
+
+        double k_lower = (-thresh_z + z0)*one_over_dz;
+        double k_upper = (thresh_z + z0)*one_over_dz;
+
+        return std::vector<double>{i_lower, i_upper, j_lower, j_upper, k_lower, k_upper};
+    }
+
+    /* Computes a list of indices to be evaluated based on the location of the Gaussian on the grid.
+    Inputs:
+        thresh_xy, thresh_z: Gaussian thresholds on x and y together, and z separately. These are based on the
+            dispersion coefficients of the Gaussian. For the loosest possible bounds, use the largest coefficients.
+        wind_shift: meters that the plume is shifted downwind at the current timestep
+        x0, y0, z0: coordinates of source (m)
+    Returns:
+        A list of indices to the flattened grids where the Gaussian equation should be evaluated.
+    */
+    std::vector<int> getValidIndices(double thresh_xy, double thresh_z,
+                                        double wind_shift){
+        
+        std::vector<double> indexBounds = computeIndexBounds(thresh_xy, thresh_z,
+                                                            wind_shift);
+
+        int i_lower = floor(indexBounds[0]);
+        int i_upper = ceil(indexBounds[1]);
+        int j_lower = floor(indexBounds[2]);
+        int j_upper = ceil(indexBounds[3]);
+        int k_lower = floor(indexBounds[4]);
+        int k_upper = ceil(indexBounds[5]);
+
+        // makes sure the computed index bounds are sensical and computes total number of cells in bounds
+        if(i_lower < 0) i_lower = 0;
+        if(i_upper > nx-1) i_upper = nx-1;
+
+        if(j_lower < 0) j_lower = 0;
+        if(j_upper > ny-1) j_upper = ny-1;
+
+        if(k_lower < 0) k_lower = 0;
+        if(k_upper > nz-1) k_upper = nz-1;
+
+        int i_count, j_count, k_count;
+        if(i_upper < i_lower || i_lower > i_upper){
+            return std::vector<int>(0);
+        } else{
+            i_count = i_upper-i_lower+1;
+        }
+
+        if(j_upper < j_lower || j_lower > j_upper){
+            return std::vector<int>(0);
+        } else{
+            j_count = j_upper-j_lower+1;
+        }
+
+        if(k_upper < k_lower){
+            return std::vector<int>(0);
+        } else{
+            k_count = k_upper-k_lower+1;
+        }
+
+        int cellCount = i_count*j_count*k_count;
+
+        std::vector<int> indices(cellCount);
+        int currentCell = 0;
+        for(int i = i_lower; i <= i_upper; i++){
+            for(int j = j_lower; j <= j_upper; j++){
+                for(int k = k_lower; k <= k_upper; k++){
+                    indices[currentCell] = map_table[j][i][k];
+                    currentCell++;
+                }
+            }
+        }
+
+        return indices;
+    }
+
     std::vector<double> computeGridSpacing(){
 
         std::vector<double> gridSpacing(3); 
@@ -845,24 +821,60 @@ private:
     int map(int i, int j, int k){
         return j*nz*nx + i*nz + k;
     }
+    
 };
 
+class SensorGaussianPuff : public CGaussianPuff {
+
+    std::vector<int> indices;
+    
+public:
+
+    SensorGaussianPuff(Vector X, Vector Y, Vector Z, 
+                    int N_sensors,
+                    int sim_dt, int puff_dt, int puff_duration,
+                    TimePoint sim_start, TimePoint sim_end,
+                    Vector wind_speeds, Vector wind_directions,
+                    Matrix source_coordinates, Vector emission_strengths,
+                    double conversion_factor, double exp_tol,
+                    bool unsafe, bool quiet) :
+        CGaussianPuff(X, Y, Z, N_sensors,
+                        sim_dt, puff_dt, puff_duration,
+                        sim_start, sim_end,
+                        wind_speeds, wind_directions,
+                        source_coordinates, emission_strengths,
+                        conversion_factor, exp_tol,
+                        unsafe, quiet)
+    {
+
+        std::vector<int> inds(N_points);
+        for(int i = 0; i < N_sensors; i++){
+            inds[i] = i;
+        }
+
+        this->indices = inds;
+    }
+private:
+    // mostly a stub, can add a precomputed spatial threshold later
+    std::vector<int> coarseSpatialThreshold(double wind_shift, double thresh_constant) override {
+        return indices;
+    }
+
+};
 
 using namespace pybind11::literals;
 namespace py = pybind11;
 
 PYBIND11_MODULE(CGaussianPuff, m) {
-    // m.doc() = "Gaussian Puff code";
-
-    py::class_<CGaussianPuff>(m, "CGaussianPuff")
-    .def(py::init<Vector, Vector, Vector, int, int, int, int, int, int, 
+    py::class_<GridGaussianPuff>(m, "GridGaussianPuff")
+    .def(py::init<Vector, Vector, Vector, int, int, int, int, int, int,
                     TimePoint, TimePoint, 
                     Vector, Vector, Matrix, Vector, double, double, bool, bool>())
     .def("simulate", &CGaussianPuff::simulate);
 
-    // .def("simulate", &CGaussianPuff::simulate)
-    // .def("GaussianPuffEquation", &CGaussianPuff::GaussianPuffEquation)
-    // .def("rotateGrids", &CGaussianPuff::rotateGrids)
-    // .def("concentrationPerPuff", &CGaussianPuff::concentrationPerPuff)
-    // .def("getSigmaCoefficients", &CGaussianPuff::getSigmaCoefficients);
+    py::class_<SensorGaussianPuff>(m, "SensorGaussianPuff")
+    .def(py::init<Vector, Vector, Vector, int, int, int, int,
+                    TimePoint, TimePoint, 
+                    Vector, Vector, Matrix, Vector, double, double, bool, bool>())
+    .def("simulate", &CGaussianPuff::simulate);
 }

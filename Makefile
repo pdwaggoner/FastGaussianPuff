@@ -14,6 +14,6 @@ MAC_FLAG=
 # MAC_FLAG=-undefined dynamic_lookup
 CGaussianPuff: CGaussianPuff.cpp
 	c++ -O3 -I $(EIGEN_DIR) -I /usr/include `python3 -m pybind11 --includes` -shared CGaussianPuff.cpp -o $(BIN)/CGaussianPuff.so -std=c++14 -fPIC $(MAC_FLAG)
-	c++ -O3 -I $(EIGEN_DIR) -I /usr/include `python3 -m pybind11 --includes` -shared CSensorGaussianPuff.cpp -o $(BIN)/CSensorGaussianPuff.so -std=c++14 -fPIC $(MAC_FLAG)
+
 clean:
 	rm $(BIN)/*.so
