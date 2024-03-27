@@ -1,22 +1,12 @@
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-@author: mengjia, rykerfish
-"""
-
-#%% Imports
+import time
+import sys
 import pandas as pd
 import numpy as np
-import time
-# import utility functions
-import sys
-utility_dir = '../'
-sys.path.insert(0, utility_dir)
+
+code_dir = '../'
+sys.path.insert(0, code_dir)
+
 from utilities import wind_synthesizer
-bin_dir = '../bin'
-sys.path.insert(0, bin_dir)
 from GaussianPuff import GaussianPuff as GP
 
 # source: 4T-11
@@ -37,7 +27,6 @@ tests_failed = 0
 failed_tests = []
 
 
-#%% 
 # Load in data
 data_dir = './test_data/'
 
@@ -135,8 +124,9 @@ def runTest(exp_start, t_0, t_end,
 
 def check_test(ch4_old, ch4, unsafe=False):
 
-    # rewrite the test here and return whether it passed or not
     passed = True
+
+    # unsafe tests have a more lenient error bound since the unsafe exponential approx has a ~3% error
     if unsafe:
         tol = 0.03
     else:
@@ -156,7 +146,7 @@ def check_test(ch4_old, ch4, unsafe=False):
             print(f"ERROR: NAN present in vectorized ch4 array at time {t}")
             if passed:
                 passed = False
-        if norm > tol: # doesn't work if there are NAN's
+        if norm > tol: # inequality doesn't work if there are NAN's
             # print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
             # print("TIME: ", t)
             # print("NORM: ", norm)
@@ -594,7 +584,6 @@ def unsafe_tests():
 
     print("-----------------------------------------")
     print("RUNNING TEST ", num_tests)
-    print("Compare runtime to general test #1")
     passed = runTest(start_1, t_0, t_end, wind_speeds, wind_directions, 
                     obs_dt, sim_dt, puff_dt, x_num, y_num, z_num, 
                     source_coordinates, emission_rate, grid_coords, puff_duration, unsafe)
@@ -640,7 +629,6 @@ def unsafe_tests():
 
     print("-----------------------------------------")
     print("RUNNING TEST ", num_tests)
-    print("Compare runtime to sensor test #2")
     passed = runSensorTest(start_3, t_0, t_end,
                            wind_speeds, wind_directions, 
                            obs_dt, sim_dt, puff_dt,

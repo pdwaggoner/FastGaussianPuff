@@ -1,14 +1,13 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Sep 21 15:59:36 2022
+import datetime
+from math import floor, ceil
+import sys
 
-@author: mengjia, rykerfish
-"""
 import numpy as np
 import pandas as pd
-import datetime
-from math import floor
+
+bin_dir = '../bin'
+sys.path.insert(0, bin_dir) # needs to contain the .so file from compilation
+
 import CGaussianPuff as C_GP
 
 class GaussianPuff:
@@ -103,7 +102,6 @@ class GaussianPuff:
 
         ns = (simulation_end-simulation_start).total_seconds()
         self.n_obs = floor(ns/obs_dt) + 1 # number of observed data points we have
-        self.n_out = floor(ns/self.output_dt)
 
         # resample the wind data from obs_dt to the simulation resolution sim_dt
         self._interpolate_wind_data(wind_speeds, wind_directions, puff_dt, simulation_start, simulation_end)
@@ -340,5 +338,7 @@ class GaussianPuff:
             raise NotImplementedError(">>>>> sim to obs resampling mode") 
         
         c_matrix_res = df.to_numpy()
+
+        self.n_out = np.shape(c_matrix_res)[0]
         
         return c_matrix_res

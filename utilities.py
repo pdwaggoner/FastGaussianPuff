@@ -8,30 +8,6 @@ Created on Wed Sep 21 16:01:36 2022
 
 import numpy as np
 
-
-'''
-Helper functions specifically used for running METEC-ADET data
-'''
-
-def wrapper_run_puff_simulation(puff):
-    '''
-    a wrapper of puff.simulation(), used for parallel run
-    Parameters
-    ----------
-    puff : GAUSSIANPUFF class
-        GAUSSIANPUFF class.
-
-    Returns
-    -------
-    ch4_sim : 2D array, shape = [n_t_sim, n_sensor]
-    simulated concentration [ppm] matrix of the puff
-        
-
-    '''
-    
-    ch4_sim = puff.simulation()
-    return ch4_sim
-
 def wind_synthesizer(df_ws, df_wd, wind_syn_mode, 
                      wind_sensor = None, colname_t = 'time_stamp.mountain'):
     '''
@@ -158,37 +134,3 @@ def avgWindDirection(wind_direction_list):
     else:
         pass
     return wind_direction_avg
-
-        
-def combine_subexperiments(exp_id_list, puff_list):    
-    '''
-    In METEC-ADET data, some experiments have multiple emission sources. 
-    This function combines the simulations from multiple sources if applicable.
-    Inputs:
-        exp_id_list (list of str):
-            list of experiment ids in METEC-ADET
-        puff_list (lisf of puff objects (GAUSSIANPUFF class)):
-            list of puff objects corresponding to exp_id 
-    Ouputs:
-        exp_id_list_2 (list of str):
-            list of experiment ids after merging multiple sources
-        puff_list (lisf of puff objects (GAUSSIANPUFF class)):
-            list of puff objects after merging multiple sources
-            
-    '''
-
-    
-    exp_id_list2, puff_list2 = [], []
-    
-    exp_id_previous = None
-    for i, exp_id in enumerate(exp_id_list):
-        puff = puff_list[i]
-        if exp_id != exp_id_previous: # save new experiment
-            exp_id_list2.append(exp_id)
-            puff_list2.append(puff)
-        else: # combine to exisitng experiment
-            puff_list2[-1].ch4_sim_res += puff.ch4_sim_res
-    
-    return exp_id_list2, puff_list2
-    
-    
