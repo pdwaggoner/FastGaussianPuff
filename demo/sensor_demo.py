@@ -1,70 +1,13 @@
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-Created on Mon Oct 10 11:20:41 2022
-
-@author: mengjia, rykerfish
-"""
-
-#%% Imports
+import sys
 import pandas as pd
 import numpy as np
-import sys
-utility_dir = '../'
-sys.path.insert(0, utility_dir)
-from utilities import wind_synthesizer
-bin_dir = '../bin' # by default, makefile stores the .so file here. needs to be on the python path to get imported.
-sys.path.insert(0, bin_dir)
-from GaussianPuff import GaussianPuff as sensor_puff
-
-# for plotting
 import matplotlib.pylab as plt
 
+code_dir = '../'
+sys.path.insert(0, code_dir)
 
-# Load in data
-data_dir = '../data/'
-
-# 1-minute resolution wind data
-df_ws_1min = pd.read_csv(data_dir + 'df_ws_1min_METEC_ADET.csv') 
-df_wd_1min = pd.read_csv(data_dir + 'df_wd_1min_METEC_ADET.csv')
-df_ws_1min['time_stamp.mountain'] = pd.to_datetime(df_ws_1min['time_stamp.mountain'])
-df_wd_1min['time_stamp.mountain'] = pd.to_datetime(df_wd_1min['time_stamp.mountain'])
-
-
-# experiment data
-df_experiment = pd.read_csv(data_dir + 'df_exp_METEC_ADET.csv')
-df_experiment['start_time.mountain'] = pd.to_datetime(df_experiment['start_time.mountain'])
-df_experiment['end_time.mountain'] = pd.to_datetime(df_experiment['end_time.mountain'])
-
-# Data processing
-# column names used in the load in dfs
-colnames = {'name' : 'name', 
-            'x' : 'utm_easting.m',
-            'y' : 'utm_northing.m',
-            'z' : 'height.m',
-            't' : 'time_stamp.mountain',
-        'exp_id' : 'experiment_id', 
-        'exp_t_0' : 'start_time.mountain', 
-    'exp_t_end' : 'end_time.mountain', 
-'emission_rate' : 'emission_rate.kg/hr'}
-
-# synethize wind data- combines wind data from multiple sensors into one timeseries
-if df_ws_1min.shape == df_wd_1min.shape:
-    wind_syn_mode, wind_sensor = 'circular_mean', None
-    ws_syn, wd_syn = wind_synthesizer(df_ws_1min, df_wd_1min, 
-                                    wind_syn_mode, wind_sensor = wind_sensor,
-                                    colname_t = colnames['t'])
-    time_stamp_wind = df_ws_1min[colnames['t']].to_list()
-else:
-    raise ValueError(">>>>> df_ws and df_wd must have the same shape.") 
-
-############### all of the above is code that just reads in some experimental wind data ##################
-
-########################### sensor demo ############################
-# IMPORTANT: the wind data is on 1min resolution, so obs_dt = 60 seconds
-# the wind data gets resampled to sim_dt when the constructor for the python code is called.
+from utilities import wind_synthesizer
+from GaussianPuff import GaussianPuff as sensor_puff
 
 # set simulation parameters
 # IMPORTANT: obs_dt must be a positive integer multiple of sim_dt, and both sim_dt and puff_dt must be integers
@@ -73,19 +16,20 @@ obs_dt, sim_dt, puff_dt = 60, 1, 1
 # start and end times at minute resolution. Needs to be in the local timezone of where we're simulating
 # e.g. if we're simulating a site in England, it needs to be in UTC.
 # if we're simulating a site in Colorado, it should be in MST/MDT
-start = pd.to_datetime('2022-03-03 10:22:00')
-end = pd.to_datetime('2022-03-03 11:52:00')
+start = pd.to_datetime('2022-01-01 12:00:00')
+end = pd.to_datetime('2022-01-01 13:00:00')
 
-## extract wind data corresponding to start and end times
-idx_0 = pd.Index(time_stamp_wind).get_indexer([start], method='nearest')[0]
-idx_end = pd.Index(time_stamp_wind).get_indexer([end], method='nearest')[0]
-wind_speeds = ws_syn[idx_0 : idx_end+1]
-wind_directions = wd_syn[idx_0 : idx_end+1]
+# fabricated wind data
+fake_times = np.linspace(0,10,61)
+wind_speeds = [3]*61
+wind_directions = 120*np.abs(np.cos(fake_times))
+wind_directions[30:60] -= 40*np.abs(np.sin(6*fake_times[30:60]))
+
 
 
 # emission source
 source_coordinates = [[488163.338444176, 4493892.53205817, 2.0]] # format is [[x0,y0,z0]] in [m]. needs to be nested list for compatability with multi source (coming soon)
-emission_rate = [3.19] # emission rate for the single source above, [kg/hr]
+emission_rate = [3.5] # emission rate for the single source above, [kg/hr]
 
 # sensors on the site. it is assumed that these encase the source coordinates.
 sensor_coordinates = [[488164.98285821447, 4493931.649887275, 2.4],
