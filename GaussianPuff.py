@@ -1,11 +1,12 @@
 import datetime
 from math import floor, ceil
 import sys
+import os
 
 import numpy as np
 import pandas as pd
 
-bin_dir = '../bin'
+bin_dir = os.path.dirname(__file__) + "/bin"
 sys.path.insert(0, bin_dir) # needs to contain the .so file from compilation
 
 import CGaussianPuff as C_GP
@@ -85,7 +86,7 @@ class GaussianPuff:
                if True, outputs extra information about the simulation and its progress.
         '''
 
-        self._verify_inputs(sim_dt, puff_dt, obs_dt)
+        # self._verify_inputs(sim_dt, puff_dt, obs_dt)
 
         self.obs_dt = obs_dt 
         self.sim_dt = sim_dt 
@@ -107,7 +108,7 @@ class GaussianPuff:
         self._interpolate_wind_data(wind_speeds, wind_directions, puff_dt, simulation_start, simulation_end)
 
         # save timeseries of simulation resolution so we can resample back to observation later
-        self.time_stamps_sim = pd.date_range(self.sim_start, self.sim_end - datetime.timedelta(seconds=1), freq=str(self.sim_dt)+"S")
+        self.time_stamps_sim = pd.date_range(self.sim_start, self.sim_end, freq=str(self.sim_dt)+"S")
         self.n_sim = len(self.time_stamps_sim) # number of simulation time steps
 
         if puff_duration == None:
@@ -176,21 +177,23 @@ class GaussianPuff:
 
     def _verify_inputs(self, sim_dt, puff_dt, obs_dt):
 
-        if not isinstance(sim_dt, int) or sim_dt <= 0:
-            print("ERROR IN INITIALIZATION: sim_dt must be a positive integer value")
-            exit(-1)
+        # TODO make work for non-integer time steps
+
+        # if not isinstance(sim_dt, int) or sim_dt <= 0:
+        #     print("ERROR IN INITIALIZATION: sim_dt must be a positive integer value")
+        #     exit(-1)
 
         if not isinstance(puff_dt, int) or puff_dt <= 0:
             print("ERROR IN INITIALIZATION: puff_dt must be a positive integer value")
             exit(-1)
 
-        if obs_dt % sim_dt != 0:
-            print("ERROR IN INITIALIZATION: obs_dt must be a positive integer multiple of sim_dt")
-            exit(-1)
+        # if obs_dt % sim_dt != 0:
+        #     print("ERROR IN INITIALIZATION: obs_dt must be a positive integer multiple of sim_dt")
+        #     exit(-1)
 
-        if puff_dt % sim_dt != 0:
-            print("ERROR IN INITIALIZATION: puff_dt must be a positive integer multiple of sim_dt")
-            exit(-1)
+        # if puff_dt % sim_dt != 0:
+        #     print("ERROR IN INITIALIZATION: puff_dt must be a positive integer multiple of sim_dt")
+        #     exit(-1)
 
 
 

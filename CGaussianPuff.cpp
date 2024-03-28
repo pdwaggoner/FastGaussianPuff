@@ -27,8 +27,8 @@ typedef std::chrono::system_clock::time_point TimePoint;
 
 class CGaussianPuff{
 protected:
-    int sim_dt, puff_dt;
-    int puff_duration;
+    double sim_dt, puff_dt;
+    double puff_duration;
 
     const Vector X, Y, Z;
     Vector X_rot, Y_rot;
@@ -77,7 +77,7 @@ public:
         quiet: false if you want output for simulation completeness. true for silent simulation.
     */
     CGaussianPuff(Vector X, Vector Y, Vector Z, int N,
-                    int sim_dt, int puff_dt, int puff_duration,
+                    double sim_dt, double puff_dt, double puff_duration,
                     TimePoint sim_start, TimePoint sim_end,
                     Vector wind_speeds, Vector wind_directions,
                     Matrix source_coordinates, Vector emission_strengths,
@@ -122,26 +122,34 @@ public:
 
         double emission_per_puff = q*puff_dt;
 
-        time_t current_time = sim_start;
+        tm puff_start = *localtime(&sim_start);
+        int current_hour = puff_start.tm_hour;
+        double current_min = puff_start.tm_min;
+        double puff_dt_minute = static_cast<double>(puff_dt)/60.0; // puff dt in minutes
+
         double report_ratio = 0.1;
 
-        int puff_lifetime = ceil(puff_duration/sim_dt);
-        int ratio = puff_dt/sim_dt;
+        int puff_lifetime = ceil(puff_duration/sim_dt); // number of time steps a puff can live for
+        int puff_to_sim_ratio = round(puff_dt/sim_dt); // number of simulation steps for every puff
 
         for(int p = 0; p < n_puffs; p++){
-            
-            // keeps track of current time. needed to compute stability class
-            tm puff_start = *localtime(&current_time);
-            current_time += puff_dt;
+
+            // keeps track of current hour. needed to compute stability class
+            current_min += puff_dt_minute;
+            if(current_min > 60.0){
+                current_min = current_min - 60.0; // maintain fractional part over 60
+                current_hour += 1;
+                if(current_hour > 23) current_hour = 0;
+            }
 
             // bounds check on time
-            if(p*ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-p*ratio;
+            if(p*puff_to_sim_ratio + puff_lifetime >= ch4.rows()) puff_lifetime = ch4.rows()-p*puff_to_sim_ratio;
 
             double theta = windDirectionToAngle(wind_directions[p]);
 
             // computes concentration timeseries for this puff
             concentrationPerPuff(emission_per_puff, theta, wind_speeds[p], 
-                                    puff_start.tm_hour, ch4.middleRows(p*ratio, puff_lifetime));
+                                    current_hour, ch4.middleRows(p*puff_to_sim_ratio, puff_lifetime));
             
             if(!quiet && floor(n_puffs*report_ratio) == p){
                 std::cout << "Simulation is " << report_ratio*100 << "\% done\n";
@@ -149,8 +157,10 @@ public:
             }
         }
     }
+
 private:
     // somewhat hacky way of making this act as an abstract function
+    // okay with this for now since it's private and can't get called from python due to lack of bindings
     virtual std::vector<int> coarseSpatialThreshold(double, double){ throw std::logic_error("Not implemented"); }
 
     /* Rotates the X and Y grids based on the current wind direction and source location.
@@ -630,7 +640,7 @@ class GridGaussianPuff : public CGaussianPuff {
 public:
     GridGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int nx, int ny, int nz, 
-                    int sim_dt, int puff_dt, int puff_duration,
+                    double sim_dt, double puff_dt, double puff_duration,
                     TimePoint sim_start, TimePoint sim_end,
                     Vector wind_speeds, Vector wind_directions,
                     Matrix source_coordinates, Vector emission_strengths,
@@ -832,7 +842,7 @@ public:
 
     SensorGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int N_sensors,
-                    int sim_dt, int puff_dt, int puff_duration,
+                    double sim_dt, double puff_dt, double puff_duration,
                     TimePoint sim_start, TimePoint sim_end,
                     Vector wind_speeds, Vector wind_directions,
                     Matrix source_coordinates, Vector emission_strengths,
@@ -867,13 +877,13 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(CGaussianPuff, m) {
     py::class_<GridGaussianPuff>(m, "GridGaussianPuff")
-    .def(py::init<Vector, Vector, Vector, int, int, int, int, int, int,
+    .def(py::init<Vector, Vector, Vector, int, int, int, double, double, double,
                     TimePoint, TimePoint, 
                     Vector, Vector, Matrix, Vector, double, double, bool, bool>())
     .def("simulate", &CGaussianPuff::simulate);
 
     py::class_<SensorGaussianPuff>(m, "SensorGaussianPuff")
-    .def(py::init<Vector, Vector, Vector, int, int, int, int,
+    .def(py::init<Vector, Vector, Vector, int, double, double, double,
                     TimePoint, TimePoint, 
                     Vector, Vector, Matrix, Vector, double, double, bool, bool>())
     .def("simulate", &CGaussianPuff::simulate);
