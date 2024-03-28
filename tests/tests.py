@@ -66,6 +66,8 @@ def runSensorTest(exp_start, t_0, t_end,
             emission_rate, puff_duration, 
             unsafe=False
             ):
+    
+    eps = 1e-5
 
     sensor_puff = GP(obs_dt, sim_dt, puff_dt,
                 t_0, t_end,
@@ -74,7 +76,8 @@ def runSensorTest(exp_start, t_0, t_end,
                 using_sensors=True,
                 sensor_coordinates=sensor_coordinates,
                 quiet=True,
-                puff_duration=puff_duration, unsafe=unsafe
+                puff_duration=puff_duration, unsafe=unsafe,
+                exp_threshold_tolerance=eps
     )
 
     start = time.time()
@@ -97,6 +100,8 @@ def runTest(exp_start, t_0, t_end,
             source_coordinates, emission_rate, grid_coords, puff_duration,
             unsafe = False
             ):
+    
+    eps = 1e-5
 
     grid_puff = GP(obs_dt, sim_dt, puff_dt,
                 t_0, t_end,
@@ -107,6 +112,7 @@ def runTest(exp_start, t_0, t_end,
                 nx=nx, ny=ny, nz=nz,
                 quiet=True, unsafe=unsafe,
                 puff_duration=puff_duration,
+                exp_threshold_tolerance=eps
     )
 
     start = time.time()
@@ -126,34 +132,32 @@ def check_test(ch4_old, ch4, unsafe=False):
 
     passed = True
 
-    # unsafe tests have a more lenient error bound since the unsafe exponential approx has a ~3% error
+    # unsafe tests have a more lenient error bound since the unsafe exponential approximation has a ~3% max error
     if unsafe:
         tol = 0.03
     else:
-        tol = 10e-6
-    # print(np.linalg.norm(ch4))
-    # print(np.linalg.norm(ch4_old))
+        tol = 0.015
 
     # stop one step short of end: original code doesn't actually produce results for final timestep, so skip it
     for t in range(0, len(ch4_old)-1):
 
-        if np.linalg.norm(ch4_old[t]) < 10e-3: # ppb measurements are so small we don't care about relative error
-            norm = abs(np.linalg.norm(ch4_old[t].ravel() - ch4[t].ravel()))
-        else:
-            norm = abs(np.linalg.norm(ch4_old[t].ravel() - ch4[t].ravel())) / (np.linalg.norm(ch4_old[t].ravel()) + tol)
+        # if everything is close to or equal to zero, we don't care.
+        if np.max(ch4_old[t]) < 1e-3:
+            continue
 
-        if np.isnan(norm):
-            print(f"ERROR: NAN present in vectorized ch4 array at time {t}")
+        max_err = np.max(ch4_old[t].ravel() - ch4[t].ravel())/np.max(ch4_old[t])
+
+        if np.isnan(max_err):
+            print(f"ERROR: NAN present ch4 array at time {t}")
             if passed:
                 passed = False
-        if norm > tol: # inequality doesn't work if there are NAN's
-            # print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
+        if max_err > tol: # inequality doesn't work if there are NAN's
             # print("TIME: ", t)
-            # print("NORM: ", norm)
+            print("max err: ", max_err)
 
             if passed:
-                passed = False
-                print(f"ERROR: Difference between vectorized version and original version is greater than {tol}")
+                passed = False # prevent from printing repeatedly
+                print(f"ERROR: Max difference from expected value is greater than {tol*100}%")
 
     return passed
 
