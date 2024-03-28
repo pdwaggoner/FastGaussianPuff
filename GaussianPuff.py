@@ -86,8 +86,6 @@ class GaussianPuff:
                if True, outputs extra information about the simulation and its progress.
         '''
 
-        # self._verify_inputs(sim_dt, puff_dt, obs_dt)
-
         self.obs_dt = obs_dt 
         self.sim_dt = sim_dt 
         self.puff_dt = puff_dt
@@ -95,6 +93,8 @@ class GaussianPuff:
             self.output_dt = self.obs_dt
         else:
             self.output_dt = output_dt
+
+        self._verify_inputs(self.sim_dt, self.puff_dt, self.obs_dt, self.output_dt)
 
         self.sim_start = simulation_start
         self.sim_end = simulation_end
@@ -175,27 +175,34 @@ class GaussianPuff:
         # initialize the final simulated concentration array
         self.ch4_sim = np.zeros((self.n_sim, self.N_points)) # simulation in sim_dt resolution, flattened
 
-    def _verify_inputs(self, sim_dt, puff_dt, obs_dt):
+    def _verify_inputs(self, sim_dt, puff_dt, obs_dt, out_dt):
 
-        # TODO make work for non-integer time steps
-
-        # if not isinstance(sim_dt, int) or sim_dt <= 0:
-        #     print("ERROR IN INITIALIZATION: sim_dt must be a positive integer value")
-        #     exit(-1)
-
-        if not isinstance(puff_dt, int) or puff_dt <= 0:
-            print("ERROR IN INITIALIZATION: puff_dt must be a positive integer value")
+        # rationale: negative time seems bad. maybe ask a physicist.
+        if sim_dt <= 0:
+            print("ERROR IN INITIALIZATION: sim_dt must be a positive value")
             exit(-1)
 
-        # if obs_dt % sim_dt != 0:
-        #     print("ERROR IN INITIALIZATION: obs_dt must be a positive integer multiple of sim_dt")
-        #     exit(-1)
+        # rationale: breaking this would mean multiple puffs are emitted in between simulation time steps. this constraint
+        # decouples sim_dt and puff_dt so that sim_dt can be scaled according to wind speed and puff_dt can be scaled
+        # according to the change in wind direction over time to guarantee accuracy of the simulation (i.e. no skipping)
+        if puff_dt < sim_dt:
+            print("ERROR IN INITIALIZATION: puff_dt must be greater than or equal to sim_dt")
+            exit(-1)
 
-        # if puff_dt % sim_dt != 0:
-        #     print("ERROR IN INITIALIZATION: puff_dt must be a positive integer multiple of sim_dt")
-        #     exit(-1)
+        # rationale: concentration arrays are build at sim_dt resolution. puff_dt = n*sim_dt for an integer n > 0
+        # ensure that puffs are emitted on simulation time steps and prevents the need for a weird interpolation/rounding.
+        # this constaint could likely be avoided, but it isn't that strong and makes the code easier.
+        eps = 1e-5
+        ratio = puff_dt/sim_dt
+        if abs(ratio - round(ratio)) > eps:
+            print("ERROR IN INITIALIZATION: puff_dt needs to be a positive interger multiple of sim_dt")
+            exit(-1)
 
-
+        # rationale: we don't have simulation data at a resolution less than sim_dt, so you'll have blank
+        # concentration fields if this condition isn't met
+        if out_dt < sim_dt:
+            print("ERROR IN INITIALIZATION: output_dt must be greater than or equal to sim_dt")
+            exit(-1)
 
     def _interpolate_wind_data(self, wind_speeds, wind_directions, puff_dt, sim_start, sim_end):
         '''
