@@ -159,9 +159,130 @@ public:
     }
 
 private:
-    // somewhat hacky way of making this act as an abstract function
-    // okay with this for now since it's private and can't get called from python due to lack of bindings
-    virtual std::vector<int> coarseSpatialThreshold(double, double){ throw std::logic_error("Not implemented"); }
+
+    /* Computes the concentration timeseries for a single puff.
+    Inputs:
+        q: Total emission corresponding to this puff (kg)
+        ws, theta: wind speed (m/s) and wind direction (radians)
+        hour: current hour of day (int)
+        ch4: 2D concentration array. First index is time, second index is the flattened spatial index.
+    Returns:
+        None. The concentration is added directly into the ch4 array in GaussianPuffEquation()
+    */
+    void concentrationPerPuff(double q, double theta, double ws, int hour,
+                                RefMatrix ch4){
+
+        // cache cos/sin so they can get reused in other calls
+        cosine = cos(theta);
+        sine = sin(theta);
+
+        Vector X_rot(X.size());
+        Vector Y_rot(Y.size());
+
+        // rotates X and Y grids, stores in X_rot and Y_rot
+        rotatePoints(X_rot, Y_rot);
+
+        char stability_class = stabilityClassifier(ws, hour);
+
+        // gets sigma coefficients and stores in sigma_{y,z} class member vars
+        getSigmaCoefficients(stability_class, X_rot);
+
+        GaussianPuffEquation(q, ws,
+                            X_rot, Y_rot,
+                            ch4);
+    }
+
+    /* Evaluates the Gaussian Puff equation on the grids. 
+    Inputs:
+        q: Total emission corresponding to this puff (kg)
+        ws, wind speed (m/s)
+        X_rot, Y_rot: rotated X and Y grids. The Z grid isn't rotated so the member variable is used repeatedly.
+        ts: time series the puff is live for. 
+        c: 2D concentration array. The first index represents the time step, the second index represents the flattened
+        spatial index.
+    Returns:
+        none, but the concentrations are added into the concentration array.
+    */
+    void GaussianPuffEquation(
+        double q, double ws,
+        RefVector X_rot, RefVector Y_rot,
+        RefMatrix ch4){
+
+        double sigma_y_max = sigma_y.maxCoeff();
+        double sigma_z_max = sigma_z.maxCoeff();
+
+        // compute thresholds
+        double prefactor = (q * conversion_factor * one_over_two_pi_three_halves) / (sigma_y_max*sigma_y_max * sigma_z_max);
+        double threshold = std::log(exp_tol / (2*prefactor));
+        double thresh_constant = std::sqrt(-2*threshold);
+
+        thresh_xy_max = sigma_y_max*thresh_constant;
+        thresh_z_max = sigma_z_max*thresh_constant;
+
+        double t = calculatePlumeTravelTime(thresh_xy_max, ws); // number of seconds til plume leaves grid
+
+        int n_time_steps = ceil(t/sim_dt); // rescale to unitless number of timesteps
+
+        // bound check on time
+        if(n_time_steps >= ch4.rows()){
+            n_time_steps = ch4.rows() - 1;
+        }
+
+        for (int i = n_time_steps; i >= 0; i--) {
+
+            // wind_shift is distance [m] plume has moved from source
+            double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
+
+            // TODO move this so it doesn't get allocated every time step
+            Vector X_rot_shift = X_rot.array() - wind_shift; // advection
+
+            std::vector<int> indices = coarseSpatialThreshold(wind_shift, thresh_constant);
+
+            for (int j : indices) {
+
+                // Skips upwind cells since sigma_{y,z} = -1 for upwind points
+                if (sigma_y[j] < 0 || sigma_z[j] < 0) {
+                    continue;
+                }
+
+                double t_xy = sigma_y[j]*thresh_constant; // local threshold
+
+                // Exponential thresholding conditionals
+                if (std::abs(X_rot_shift[j]) >= t_xy) {
+                    continue;
+                }
+
+                if (std::abs(Y_rot[j]) >= t_xy) {
+                    continue;
+                }
+
+                double t_z = sigma_z[j]*thresh_constant; // local threshold
+
+                if (std::abs(Z[j] - z0) >= t_z) {
+                    continue;
+                }
+
+                // terms are written in a way to minimize divisions and exp evaluations
+                double one_over_sig_y = 1/sigma_y[j];
+                double one_over_sig_z = 1/sigma_z[j];
+
+                double y_by_sig = Y_rot[j] * one_over_sig_y;
+                double x_by_sig = X_rot_shift[j] * one_over_sig_y;
+                double z_minus_by_sig = (Z[j] - z0) * one_over_sig_z;
+                double z_plus_by_sig = (Z[j] + z0) * one_over_sig_z;
+
+                double term_4_a_arg = z_minus_by_sig*z_minus_by_sig;
+                double term_4_b_arg = z_plus_by_sig*z_plus_by_sig;
+                double term_3_arg = (y_by_sig*y_by_sig + x_by_sig*x_by_sig);
+
+                double term_1 = q*one_over_two_pi_three_halves*one_over_sig_y*one_over_sig_y*one_over_sig_z;
+                double term_4 = this->exp(-0.5*(term_3_arg + term_4_a_arg)) + this->exp(-0.5*(term_3_arg + term_4_b_arg));
+
+                ch4(i, j) += term_1 * term_4 * conversion_factor;
+            }
+        }
+    }
+
 
     /* Rotates the X and Y grids based on the current wind direction and source location.
     Inputs:
@@ -179,6 +300,47 @@ private:
 
         X_rot = R_g.row(0);
         Y_rot = R_g.row(1);
+    }
+
+    /* Computes the time step when the plume will exit the computational grid. 
+    Inputs:
+        thresh_xy: Gaussian threshold on xy
+        ws, wind speed (m/s)
+    Returns:
+        the time when the plume will be fully off the grid.
+    */
+    double calculatePlumeTravelTime(double thresh_xy, 
+                                    double ws){
+
+        Vector2d box_min(-thresh_xy, -thresh_xy);
+        Vector2d box_max(thresh_xy, thresh_xy);
+
+        Vector2d grid_min(x_min, y_min);
+        Vector2d grid_max(x_max, y_max);
+
+        Vector2d origin(0,0);
+
+        Vector2d rayDir(cosine, -sine);
+        Vector2d invRayDir = rayDir.cwiseInverse();
+
+        // finding the last corner of the threshold box to leave the grid
+        Vector2d box_times = AABB(box_min, box_max, origin, invRayDir); // find where ray intersects box
+        Vector2d backward_collision = box_times[0]*rayDir; // where backwards ray intersects with an edge of the box
+        Vector2d box_corner = findNearestCorner(box_min, box_max, backward_collision);
+
+        // find the corner of the grid that the threshold must pass based on the wind direction
+        Vector2d grid_middle = 0.5*(grid_max-grid_min).array() + grid_min.array();
+        Vector2d grid_times = AABB(grid_min, grid_max, grid_middle, invRayDir);
+        Vector2d forward_collision = grid_times[1]*rayDir + grid_middle;
+        Vector2d grid_corner = findNearestCorner(grid_min, grid_max, forward_collision);
+
+        // compute travel time between the two corners
+        Vector2d distance = (grid_corner-box_corner).cwiseAbs();
+        invRayDir = invRayDir.cwiseAbs();
+        double travelDistance = (distance.array()*invRayDir.array()).minCoeff();
+        double travelTime = travelDistance/ws;
+
+        return travelTime;
     }
 
     /* Axis Aligned Bounding Box algorithm. Used to compute the intersections between a ray (wind direction) and a square.
@@ -229,47 +391,6 @@ private:
         }
 
         return corner;
-    }
-
-    /* Computes the time step when the plume will exit the computational grid. 
-    Inputs:
-        thresh_xy: Gaussian threshold on xy
-        ws, wind speed (m/s)
-    Returns:
-        the time when the plume will be fully off the grid.
-    */
-    double calculatePlumeTravelTime(double thresh_xy, 
-                                    double ws){
-
-        Vector2d box_min(-thresh_xy, -thresh_xy);
-        Vector2d box_max(thresh_xy, thresh_xy);
-
-        Vector2d grid_min(x_min, y_min);
-        Vector2d grid_max(x_max, y_max);
-
-        Vector2d origin(0,0);
-
-        Vector2d rayDir(cosine, -sine);
-        Vector2d invRayDir = rayDir.cwiseInverse();
-
-        // finding the last corner of the threshold box to leave the grid
-        Vector2d box_times = AABB(box_min, box_max, origin, invRayDir); // find where ray intersects box
-        Vector2d backward_collision = box_times[0]*rayDir; // where backwards ray intersects with an edge of the box
-        Vector2d box_corner = findNearestCorner(box_min, box_max, backward_collision);
-
-        // find the corner of the grid that the threshold must pass based on the wind direction
-        Vector2d grid_middle = 0.5*(grid_max-grid_min).array() + grid_min.array();
-        Vector2d grid_times = AABB(grid_min, grid_max, grid_middle, invRayDir);
-        Vector2d forward_collision = grid_times[1]*rayDir + grid_middle;
-        Vector2d grid_corner = findNearestCorner(grid_min, grid_max, forward_collision);
-
-        // compute travel time between the two corners
-        Vector2d distance = (grid_corner-box_corner).cwiseAbs();
-        invRayDir = invRayDir.cwiseAbs();
-        double travelDistance = (distance.array()*invRayDir.array()).minCoeff();
-        double travelTime = travelDistance/ws;
-
-        return travelTime;
     }
 
     /* Computes Pasquill stability class
@@ -468,130 +589,11 @@ private:
         }
     }
 
-    /* Evaluates the Gaussian Puff equation on the grids. 
-    Inputs:
-        q: Total emission corresponding to this puff (kg)
-        ws, wind speed (m/s)
-        X_rot, Y_rot: rotated X and Y grids. The Z grid isn't rotated so the member variable is used repeatedly.
-        ts: time series the puff is live for. 
-        c: 2D concentration array. The first index represents the time step, the second index represents the flattened
-        spatial index.
-    Returns:
-        none, but the concentrations are added into the concentration array.
-    */
-    void GaussianPuffEquation(
-        double q, double ws,
-        RefVector X_rot, RefVector Y_rot,
-        RefMatrix ch4){
-
-        double sigma_y_max = sigma_y.maxCoeff();
-        double sigma_z_max = sigma_z.maxCoeff();
-
-        // compute thresholds
-        double prefactor = (q * conversion_factor * one_over_two_pi_three_halves) / (sigma_y_max*sigma_y_max * sigma_z_max);
-        double threshold = std::log(exp_tol / (2*prefactor));
-        double thresh_constant = std::sqrt(-2*threshold);
-
-        thresh_xy_max = sigma_y_max*thresh_constant;
-        thresh_z_max = sigma_z_max*thresh_constant;
-
-        double t = calculatePlumeTravelTime(thresh_xy_max, ws); // number of seconds til plume leaves grid
-
-        int n_time_steps = ceil(t/sim_dt); // rescale to unitless number of timesteps
-
-        // bound check on time
-        if(n_time_steps >= ch4.rows()){
-            n_time_steps = ch4.rows() - 1;
-        }
-
-        for (int i = n_time_steps; i >= 0; i--) {
-
-            // wind_shift is distance [m] plume has moved from source
-            double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
-
-            // TODO move this so it doesn't get allocated every time step
-            Vector X_rot_shift = X_rot.array() - wind_shift; // advection
-
-            std::vector<int> indices = coarseSpatialThreshold(wind_shift, thresh_constant);
-
-            for (int j : indices) {
-
-                // Skips upwind cells since sigma_{y,z} = -1 for upwind points
-                if (sigma_y[j] < 0 || sigma_z[j] < 0) {
-                    continue;
-                }
-
-                double t_xy = sigma_y[j]*thresh_constant; // local threshold
-
-                // Exponential thresholding conditionals
-                if (std::abs(X_rot_shift[j]) >= t_xy) {
-                    continue;
-                }
-
-                if (std::abs(Y_rot[j]) >= t_xy) {
-                    continue;
-                }
-
-                double t_z = sigma_z[j]*thresh_constant; // local threshold
-
-                if (std::abs(Z[j] - z0) >= t_z) {
-                    continue;
-                }
-
-                // terms are written in a way to minimize divisions and exp evaluations
-                double one_over_sig_y = 1/sigma_y[j];
-                double one_over_sig_z = 1/sigma_z[j];
-
-                double y_by_sig = Y_rot[j] * one_over_sig_y;
-                double x_by_sig = X_rot_shift[j] * one_over_sig_y;
-                double z_minus_by_sig = (Z[j] - z0) * one_over_sig_z;
-                double z_plus_by_sig = (Z[j] + z0) * one_over_sig_z;
-
-                double term_4_a_arg = z_minus_by_sig*z_minus_by_sig;
-                double term_4_b_arg = z_plus_by_sig*z_plus_by_sig;
-                double term_3_arg = (y_by_sig*y_by_sig + x_by_sig*x_by_sig);
-
-                double term_1 = q*one_over_two_pi_three_halves*one_over_sig_y*one_over_sig_y*one_over_sig_z;
-                double term_4 = this->exp(-0.5*(term_3_arg + term_4_a_arg)) + this->exp(-0.5*(term_3_arg + term_4_b_arg));
-
-                ch4(i, j) += term_1 * term_4 * conversion_factor;
-            }
-        }
-    }
-
-    /* Computes the concentration timeseries for a single puff.
-    Inputs:
-        q: Total emission corresponding to this puff (kg)
-        ws, theta: wind speed (m/s) and wind direction (radians)
-        hour: current hour of day (int)
-        ch4: 2D concentration array. First index is time, second index is the flattened spatial index.
-    Returns:
-        None. The concentration is added directly into the ch4 array in GaussianPuffEquation()
-    */
-    void concentrationPerPuff(double q, double theta, double ws, int hour,
-                                RefMatrix ch4){
-
-        // cache cos/sin so they can get reused in other calls
-        cosine = cos(theta);
-        sine = sin(theta);
-
-        Vector X_rot(X.size());
-        Vector Y_rot(Y.size());
-
-        // rotates X and Y grids, stores in X_rot and Y_rot
-        rotatePoints(X_rot, Y_rot);
-
-        char stability_class = stabilityClassifier(ws, hour);
-
-        // gets sigma coefficients and stores in sigma_{y,z} class member vars
-        getSigmaCoefficients(stability_class, X_rot);
-
-        GaussianPuffEquation(q, ws,
-                            X_rot, Y_rot,
-                            ch4);
-    }
-
     const double deg_to_rad_factor = M_PI/180.0;
+
+    // somewhat hacky way of making this act as an abstract function
+    // okay with this for now since it's private and can't get called from python due to lack of bindings
+    virtual std::vector<int> coarseSpatialThreshold(double, double){ throw std::logic_error("Not implemented"); }
 
     static double fastExp(double x){
         constexpr double a = (1ll << 52) / 0.6931471805599453;
@@ -636,8 +638,12 @@ private:
 class GridGaussianPuff : public CGaussianPuff {
 
     int nx, ny, nz;
-    double dx, dy, dz;
+    double dx, dy, dz; // grid spacings
 public:
+
+    /* Constructor. See CGaussianPuff constructor for information on parameters not mentioned here.
+    nx,ny,nz: number of grid points along each axis respectively
+    */
     GridGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int nx, int ny, int nz, 
                     double sim_dt, double puff_dt, double puff_duration,
@@ -683,6 +689,8 @@ public:
 private:
     vec3d map_table; // precomputed map from the 3D meshgrid index to the 1D raveled index.
     
+
+    // The grid-based spatial thresholding uses inequalities based on grid indices 
     std::vector<int> coarseSpatialThreshold(double wind_shift, double thresh_constant) override {
 
         std::vector<int> indices = getValidIndices(thresh_xy_max, thresh_z_max, wind_shift);
@@ -840,6 +848,9 @@ class SensorGaussianPuff : public CGaussianPuff {
     
 public:
 
+    /* Constructor. See CGaussianPuff constructor for information about parameters not given here.
+    N_sensors: Number of sensors being simulated.
+    */
     SensorGaussianPuff(Vector X, Vector Y, Vector Z, 
                     int N_sensors,
                     double sim_dt, double puff_dt, double puff_duration,
