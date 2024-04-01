@@ -23,7 +23,7 @@ class GaussianPuff:
                  grid_coordinates=None,
                  nx=None, ny=None, nz=None,
                  puff_duration = 1200,
-                 exp_threshold_tolerance = 1e-9,
+                 exp_threshold_tolerance = 1e-7,
                  conversion_factor = 1e6*1.524,
                  unsafe=False, quiet=True):
         
@@ -100,6 +100,10 @@ class GaussianPuff:
         self.sim_end = simulation_end
 
         self.quiet = quiet
+
+        # allow unsafe mode to have coarser thresholding
+        if unsafe:
+            exp_threshold_tolerance = 1e-5
 
         ns = (simulation_end-simulation_start).total_seconds()
         self.n_obs = floor(ns/obs_dt) + 1 # number of observed data points we have
