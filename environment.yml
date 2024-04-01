@@ -6,3 +6,4 @@ channels:
 dependencies:
   - pybind11
   - pandas
+  - numpy
