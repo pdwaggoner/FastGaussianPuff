@@ -1,39 +1,58 @@
 # FastGaussianPuff
+This repository contains multiple different implementations of the Gaussian puff atmospheric dispersion model that simulates concentration timeseries given a geometry and emission parameters. The Gaussian puff model simulates a continuous emission as a series of discrete puffs. As long as puffs are emitted often enough and tracked finely enough (more on that later), this model can give reasonable results more quickly than solving an advection-diffusion equation.
 
-### ABOUT INPUT PARAMETERS:
+Specifically, the code computes the space and time-dependent concentration field
 
-There are three timestep related paremeters, sim_dt, obs_dt, and puff_dt. 
-1. sim_dt: the time step size the model is simulated at in seconds. **Must be a positive integer.** This restriction is because of how the timestamps are handled in the C code. If this becomes an issue, we can likely find a workaround. 
-2. obs_dt: this is the resolution we have observed wind data at in seconds. E.g. if we have 1-minute wind data, obs_dt = 60. **This paramater needs to be a positive integer multiple of sim_dt.**
-3. puff_dt: this is how frequently new puffs are created in seconds, e.g. puff_dt = 1 means a new puff is created every second. The puff must be simulated until the puff moves off the grid, so creating fewer puffs will improve runtime at the tradeoff of accuracy. **Must be a positive integer.**
+$$ c(x,y,z,t) = \sum_{p \in S_t} c_p(x,y,z,t) $$
 
-In the Python code, the wind data will be resampled from obs_dt to sim_dt by interpolation. So, if we only have 1-minute wind data, it will get interpolated down to the second for use in simulation. The concentration is computed at sim_dt resolution, but is resampled back up to obs_dt resolution at the end of the simulation. Both resolutions are accessible in ch4_sim and ch4_obs respectively. 
+where $S_t$ is the set of active puffs at time $t$ and
 
-### Running on Casper
-This code requires the Eigen C++ library, as well as the pybind11 and pandas python modules. Below is a guide to setting up the right environment on Casper.
+$$ c_p(x,y,z,t) = \frac{q}{(2\pi)^{3/2}  \sigma_y^2 \sigma_z} \exp{\left(-\frac{(x-ut)^2+y^2}{2\sigma_y^2}\right)} \left[\exp{\left(-\frac{(z-z_0)^2}{2\sigma_z^2}\right)} + \exp{\left(-\frac{(z+z_0)^2}{2\sigma_z^2}\right)} \right]$$
 
-1. Clone this repository on Casper
-2. Activate the Eigen and Conda modules. Conda is used for managing the python packages. These modules can be activated by using the module system on Casper with the following commands:
-```
-$ module load eigen/3.4.0
-$ module load conda
-```
-3. Create the conda environment
+is the concentration field for a single puff. Here, $q$ is the amount of methane in a puff, $u$ is wind speed, $z_0$ is the emission release height, and $\sigma_{y,z}$ are dispersion parameters that control plume spread.
 
-Once conda is activated, we need to create the conda environment. **This creation only needs to be done once**. The command below will create a new conda environment called `gp` from the provided .yml file.
-```
-conda env create -f conda_env.yml
-```
-This will install packages necessary to use the fastGaussianPuff code. To activate the environment, use
-```
-conda activate gp
-```
-If you need any other python packages for your code, add them to this environment using `conda install [package name]`. 
+## How this code works
+Fast implementations of algorithms to simulate this model live in some C++ code. This has a Python interface and is designed to be used from Python.
 
-This will allow you to run the code in the current environment, however code should not be run on the login nodes. Either start an interactive session using `execcasper` or create a script to set up the environment and send jobs to the HPC queue. I'll try and create an example script of this type soon.
+Currently, you need four sets of parameters to set up a simulation.
+1. Geometry information. This is the spatial domain you're interested in.
+2. Emission parameters. These include where your emission is coming from, how long to simulate for, and at what emission rate.
+3. Wind data. You need timeseries for both wind speed and wind direction that are regularly spaced in time.
+4. Timestep parameters. These parameters affect accuracy of the simulation. Higher wind speeds or rapid changes in wind direction means these parameters need to be smaller to maintain accuracy. Hopefully one day we can set these automatically based on the wind data.
+
+There are descriptions for each parameter in the [class file](GaussianPuff.py) and demos for how to use the code in the `demos/` directory.
+
+### Site geometry
+Currently, we care about two use cases. Each of these have smart implementations that are specialized to be fast for each scenario and require different 
+1. Regularly gridded rectangular domain. Here, we create a 3D rectangular grid and simulate concentrations at each point. This is useful for vizualization, among other things.
+2. Sparse points-in-space. This is intended for when you only care about a few specific points in the domain (e.g. simulating concentration timeseries for point-in-space sensors).
+
+### Time-related parameters
+There are four time-related parameters to distinguish between:
+1. `sim_dt`: This is the main simulation time step. If this parameter is too high it will cause "skipping" in the simulation, like a movie with a bad framerate. What constitutes as "too high" depends on the wind speed.
+2. `puff_dt`: This is how frequently puffs are released. While it would seem to be bad to emit puffs infrequently, the right value for this parameter depends on how rapidly the wind direction is changing. If the direction is relatively constant, this parameter can be set higher due to how concentration values are averaged over time for each puff. While not exactly a simulation timestep, this parameter plays a role in accuracy.
+3. `obs_dt`: This is not a timestep parameter. Instead, this should be how far apart in time the observations are in the wind data. E.g. `obs_dt=60` means you have exactly one data point every 60 seconds.
+4. `output_dt`: This is not a timestep parameter and is not required to be set. This is the resolution in time to output the final concentration timeseries, e.g. `output_dt=60` will provide a concentration timeseries with one data point every minute. By default, this is set to be the same as `obs_dt`. 
+
+There are a few restrictions imposed on the time parameters.
+1. They should all be positive.
+2. We should have both `puff_dt` > `sim_dt` and `out_dt` > `sim_dt`. Note that while we can have `puff_dt` > `obs_dt`, it is not advised except for specific visualization purposes. This is because data is being output between the creation of individual puffs, so you will see individual puffs traveling.
+3. `puff_dt` should be a positive integer multiple of `sim_dt`, i.e. `puff_dt` = `n*sim_dt` for some positive integer n. This prevents the code having to interpolate the concentration values in time, although it is likely that this constraint could be avoided.
+
+To simulate below the resolution of `obs_dt`, wind data is interpolated to resolution `puff_dt` so that each puff may have a separate wind direction and speed.
+
+## Installation instructions
+Dependencies:
+- Eigen C++ library
+- Make
+- Pybind11, numpy, and pandas python libraries
+
+1. Ensure dependencies are installed. Recommended to install Eigen using a package manger (e.g. apt, homebrew) and the python libraries using conda. There is an [environment file](environment.yml) containing a simple conda environment required to run the simulations. Some of the demos require other Python libraries such as matplotlib.
+2. Open a terminal in this directory and type `make` to compile the C++ code.
+3. You're done! Simply include `GaussianPuff.py` in your Python script to use.
 
 ### Other notes
 
 - Due to how the code is linked between Python and C++, you are unable to use Ctrl+C in a terminal to kill the simulation partway through. If you need to stop a simulation, kill the python process in the task manager or put the program in the background and kill it directly. On Linux, the shortcut to do this is Ctrl+Z followed by the command `kill %%`.
 
-- To run the tests, you'll need the input data. It is currently stored on dropbox under fastGaussianPuff/test_data. Download that locally and copy it to Casper using scp.
+- To run the tests you'll need the input data. It is currently stored on dropbox under fastGaussianPuff/test_data.
