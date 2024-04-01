@@ -62,18 +62,19 @@ protected:
 public:
     /* Constructor.
     Inputs:
-        X, Y, Z: Flattened versions of 3D meshgrids
-        nx, ny, nz: number of points in each direction
-        sim_dt: time between simulation time steps (MUST BE INTEGER NUMBER OF SECONDS)
-        puff_dt: time between creation of two puffs
-        puff_duration: maximum number of seconds puff can be live for. 
-        sim_start, sim_end: datetime stamps for when to start and end the emission
-        wind_speeds, wind_directions: timeseries for wind speeds (m/s) and directions (degrees) at sim_dt resolution
-        source_coordinates: source coordinates in (x,y,z) format for each source. size- (n_sources, 3)
-        emission_strengths: emission rates for each source (kg/hr). length: n_sources
-        conversion_factor: conversion between kg/m^3 to ppm for ch4
+        X, Y, Z: Flattened vectors holding (x,y,z) coordinates of points to simulate [m]
+        N: total number of grid points
+        sim_dt: time between simulation time steps [s]
+        puff_dt: time between creation of two puffs [s]
+        puff_duration: maximum amount of time a puff can be alive for. Helps prevent unphysical effects [s]
+        sim_start, sim_end: datetime stamps for when to start and end the emission scenario
+        wind_speeds, wind_directions: timeseries for wind speeds [m/s] and directions [degrees] at sim_dt resolution
+        source_coordinates: source coordinates in (x,y,z) format for each source. size- (n_sources, 3) [m]
+        emission_strengths: emission rates for each source [kg/hr]. length: n_sources
+        conversion_factor: conversion ratio between kg/m^3 to ppm for CH4
         exp_tol: tolerance for the exponential thresholding applied to the Gaussians. Lower tolerance means less accuracy
-        but a faster execution. Runtime and accuracy are both very sensitive to this parameter.
+        but a faster execution.
+        unsafe: enables unsafe math operations that are faster but less accurate due to the approximations used.
         quiet: false if you want output for simulation completeness. true for silent simulation.
     */
     CGaussianPuff(Vector X, Vector Y, Vector Z, int N,
