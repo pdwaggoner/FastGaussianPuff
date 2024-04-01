@@ -23,22 +23,21 @@ class GaussianPuff:
                  grid_coordinates=None,
                  nx=None, ny=None, nz=None,
                  puff_duration = 1200,
-                 exp_threshold_tolerance = 1e-7,
+                 exp_threshold_tolerance = None,
                  conversion_factor = 1e6*1.524,
                  unsafe=False, quiet=True):
         
         '''
         Inputs: 
-            obs_dt [s] (scalar, int): 
+            obs_dt [s] (scalar, double): 
                 time interval (dt) for the observations
-                NOTE: obs_dt must be a positive integer multiple of sim_dt due to how resampling is done. 
-            sim_dt [s] (scalar, int): 
+                NOTE: must be larger than sim_dt. This should be the resolution of the wind data.
+            sim_dt [s] (scalar, double): 
                 time interval (dt) for the simulation results
-                NOTE: must be an integer number of seconds due to how timestamps are handled in C.
-            puff_dt [s] (scalar, int): 
+            puff_dt [s] (scalar, double): 
                 time interval (dt) between two successive puffs' creation
-                NOTE: must also be a positive integer multiple of sim_dt and <= obs_dt
-            output_dt [s] (scalar, int):
+                NOTE: must also be a positive integer multiple of sim_dt, e.g. puff_dt = n*sim_dt for integer n > 0
+            output_dt [s] (scalar, double):
                 resolution to resample the concentration to at the end of the sismulation. By default,
                 resamples to the resolution of the wind observations obs_dt.
             simulation_start, simulation_end (pd.DateTime values)
@@ -67,7 +66,7 @@ class GaussianPuff:
                 format is grid_coordinates=[min_x, min_y, min_z, max_x, max_y, max_z]
             nx, ny, ny (scalar, int):
                 Number of points for the grid the x, y, and z directions
-            puff_duration (int) [seconds] :
+            puff_duration (double) [seconds] :
                 how many seconds a puff can 'live'; we assume a puff will fade away after a certain time.
                 Depending on the grid size wind speed, this parameter will never come into play as the simulation
                 for the puff stops when the plume has moved far away. In low wind speeds, however, this cutoff will
@@ -76,7 +75,8 @@ class GaussianPuff:
             exp_threshold_tolerance (scalar, float):
                 the tolerance used to threshold the exponentials when evaluating the Gaussian equation.
                 If, for example, exp_tol = 1e-9, the concentration at a single point for an individual time step
-                will have error less than 1e-9. Upsampling to different time resolutions will introduce extra error. 
+                will have error less than 1e-9. Upsampling to different time resolutions may introduce extra error.
+                Default is 1e-7, which passess all safe-mode tests with less than 0.1% error. 
             conversion_factor (scalar, float): 
                 convert from kg/m^3 to ppm, this factor is for ch4 only
             unsafe (boolean):
@@ -102,8 +102,13 @@ class GaussianPuff:
         self.quiet = quiet
 
         # allow unsafe mode to have coarser thresholding
-        if unsafe:
-            exp_threshold_tolerance = 1e-5
+        if exp_threshold_tolerance is None:
+            if unsafe:
+                self.exp_threshold_tolerance = 1e-5
+            else: 
+                self.exp_threshold_tolerance = 1e-7
+        else:
+            self.exp_threshold_tolerance = exp_threshold_tolerance
 
         ns = (simulation_end-simulation_start).total_seconds()
         self.n_obs = floor(ns/obs_dt) + 1 # number of observed data points we have
@@ -152,7 +157,7 @@ class GaussianPuff:
                     simulation_start, simulation_end,
                     self.wind_speeds_sim, self.wind_directions_sim,
                     source_coordinates, emission_rates,
-                    conversion_factor, exp_threshold_tolerance,
+                    conversion_factor, self.exp_threshold_tolerance,
                     unsafe, quiet)
         else:
             self.using_sensors = True
@@ -171,7 +176,7 @@ class GaussianPuff:
                 simulation_start, simulation_end,
                 self.wind_speeds_sim, self.wind_directions_sim,
                 source_coordinates, emission_rates,
-                conversion_factor, exp_threshold_tolerance,
+                conversion_factor, self.exp_threshold_tolerance,
                 unsafe, quiet
             )
 

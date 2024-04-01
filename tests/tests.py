@@ -684,16 +684,16 @@ def unsafe_tests():
         tests_passed += 1
 
 
-# print("\nRUNNING GENERAL TESTS")
-# general_tests()
+print("\nRUNNING GENERAL TESTS")
+general_tests()
 print("\nRUNNING UNSAFE MODE TESTS")
 unsafe_tests()
-# print("\nRUNNING NON-SQUARE TESTS")
-# non_square_tests()
-# print("\nRUNNING TIMESTEP TESTS")
-# varying_timestep_tests()
-# print("\nRUNNING SENSOR TESTS")
-# sensor_tests()
+print("\nRUNNING NON-SQUARE TESTS")
+non_square_tests()
+print("\nRUNNING TIMESTEP TESTS")
+varying_timestep_tests()
+print("\nRUNNING SENSOR TESTS")
+sensor_tests()
 
 
 print("----------------------------------------------------------------")
