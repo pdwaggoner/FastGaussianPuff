@@ -207,35 +207,32 @@ private:
     void GaussianPuffEquation(
         double q, double ws,
         RefVector X_rot, RefVector Y_rot,
-        RefMatrix ch4){
+        RefMatrix ch4) {
 
         double sigma_y_max = sigma_y.maxCoeff();
         double sigma_z_max = sigma_z.maxCoeff();
 
         // compute thresholds
-        double prefactor = (q * conversion_factor * one_over_two_pi_three_halves) / (sigma_y_max*sigma_y_max * sigma_z_max);
-        double threshold = std::log(exp_tol / (2*prefactor));
-        double thresh_constant = std::sqrt(-2*threshold);
+        double prefactor = (q * conversion_factor * one_over_two_pi_three_halves) / (sigma_y_max * sigma_y_max * sigma_z_max);
+        double threshold = std::log(exp_tol / (2 * prefactor));
+        double thresh_constant = std::sqrt(-2 * threshold);
 
-        thresh_xy_max = sigma_y_max*thresh_constant;
-        thresh_z_max = sigma_z_max*thresh_constant;
+        thresh_xy_max = sigma_y_max * thresh_constant;
+        thresh_z_max = sigma_z_max * thresh_constant;
 
         double t = calculatePlumeTravelTime(thresh_xy_max, ws); // number of seconds til plume leaves grid
 
-        int n_time_steps = ceil(t/sim_dt); // rescale to unitless number of timesteps
+        int n_time_steps = ceil(t / sim_dt); // rescale to unitless number of timesteps
 
         // bound check on time
-        if(n_time_steps >= ch4.rows()){
+        if (n_time_steps >= ch4.rows()) {
             n_time_steps = ch4.rows() - 1;
         }
 
         for (int i = n_time_steps; i >= 0; i--) {
 
             // wind_shift is distance [m] plume has moved from source
-            double wind_shift = ws*(i*sim_dt); // i*sim_dt is # of seconds on current time step
-
-            // TODO move this so it doesn't get allocated every time step
-            Vector X_rot_shift = X_rot.array() - wind_shift; // advection
+            double wind_shift = ws * (i * sim_dt); // i*sim_dt is # of seconds on current time step
 
             std::vector<int> indices = coarseSpatialThreshold(wind_shift, thresh_constant);
 
@@ -246,10 +243,10 @@ private:
                     continue;
                 }
 
-                double t_xy = sigma_y[j]*thresh_constant; // local threshold
+                double t_xy = sigma_y[j] * thresh_constant; // local threshold
 
                 // Exponential thresholding conditionals
-                if (std::abs(X_rot_shift[j]) >= t_xy) {
+                if (std::abs(X_rot[j] - wind_shift) >= t_xy) {
                     continue;
                 }
 
@@ -257,32 +254,33 @@ private:
                     continue;
                 }
 
-                double t_z = sigma_z[j]*thresh_constant; // local threshold
+                double t_z = sigma_z[j] * thresh_constant; // local threshold
 
                 if (std::abs(Z[j] - z0) >= t_z) {
                     continue;
                 }
 
                 // terms are written in a way to minimize divisions and exp evaluations
-                double one_over_sig_y = 1/sigma_y[j];
-                double one_over_sig_z = 1/sigma_z[j];
+                double one_over_sig_y = 1 / sigma_y[j];
+                double one_over_sig_z = 1 / sigma_z[j];
 
                 double y_by_sig = Y_rot[j] * one_over_sig_y;
-                double x_by_sig = X_rot_shift[j] * one_over_sig_y;
+                double x_by_sig = (X_rot[j] - wind_shift) * one_over_sig_y;
                 double z_minus_by_sig = (Z[j] - z0) * one_over_sig_z;
                 double z_plus_by_sig = (Z[j] + z0) * one_over_sig_z;
 
-                double term_4_a_arg = z_minus_by_sig*z_minus_by_sig;
-                double term_4_b_arg = z_plus_by_sig*z_plus_by_sig;
-                double term_3_arg = (y_by_sig*y_by_sig + x_by_sig*x_by_sig);
+                double term_4_a_arg = z_minus_by_sig * z_minus_by_sig;
+                double term_4_b_arg = z_plus_by_sig * z_plus_by_sig;
+                double term_3_arg = (y_by_sig * y_by_sig + x_by_sig * x_by_sig);
 
-                double term_1 = q*one_over_two_pi_three_halves*one_over_sig_y*one_over_sig_y*one_over_sig_z;
-                double term_4 = this->exp(-0.5*(term_3_arg + term_4_a_arg)) + this->exp(-0.5*(term_3_arg + term_4_b_arg));
+                double term_1 = q * one_over_two_pi_three_halves * one_over_sig_y * one_over_sig_y * one_over_sig_z;
+                double term_4 = this->exp(-0.5 * (term_3_arg + term_4_a_arg)) + this->exp(-0.5 * (term_3_arg + term_4_b_arg));
 
                 ch4(i, j) += term_1 * term_4 * conversion_factor;
             }
         }
     }
+
 
 
     /* Rotates the X and Y grids based on the current wind direction and source location.
