@@ -27,13 +27,13 @@ typedef std::chrono::system_clock::time_point TimePoint;
 
 class CGaussianPuff{
 protected:
-    double sim_dt, puff_dt;
-    double puff_duration;
-
     const Vector X, Y, Z;
     Vector X_rot, Y_rot;
     Matrix stackedGrid;
     int N_points;
+
+    double sim_dt, puff_dt;
+    double puff_duration;
 
     const Vector wind_speeds, wind_directions;
     Vector sigma_y, sigma_z;
@@ -134,6 +134,8 @@ public:
         int puff_to_sim_ratio = round(puff_dt/sim_dt); // number of simulation steps for every puff
 
         for(int p = 0; p < n_puffs; p++){
+
+            if (PyErr_CheckSignals() != 0) throw pybind11::error_already_set(); // catches ctrl+c signal from python
 
             // keeps track of current hour. needed to compute stability class
             current_min += puff_dt_minute;
@@ -743,7 +745,6 @@ private:
 
         double Xrt_dot_v = X0_rt.dot(v);
         double Xrt_dot_vp = X0_rt.dot(vp);
-        double norm_sq_Xrt = X0_rt.dot(X0_rt);
 
         double one_over_dx = 1/dx;
         double one_over_dy = 1/dy;
