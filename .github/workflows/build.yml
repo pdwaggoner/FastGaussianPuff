@@ -45,9 +45,17 @@ jobs:
         pip install -vv .
       shell: bash -el {0}
 
-    - name: Verify import
+    - name: Verify import of C code
       run: |
         python -c "import FastGaussianPuff.CGaussianPuff"
+      shell: bash -el {0}
+
+    - name: Verify import of python class
+      run: |
+        pytest -sv tests/test_import.py
+        cd tests/
+        pytest -sv test_import.py
+        cd ..
       shell: bash -el {0}
 
   build_linux:
@@ -84,7 +92,15 @@ jobs:
         pip install -vv .
       shell: bash -el {0}
 
-    - name: Verify import
+    - name: Verify import of C code
       run: |
         python -c "import FastGaussianPuff.CGaussianPuff"
+      shell: bash -el {0}
+
+    - name: Verify import of python class
+      run: |
+        pytest -sv tests/test_import.py
+        cd tests/
+        pytest -sv test_import.py
+        cd ..
       shell: bash -el {0}
