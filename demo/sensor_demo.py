@@ -1,12 +1,7 @@
-import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pylab as plt
 
-code_dir = '../'
-sys.path.insert(0, code_dir)
-
-from utilities import wind_synthesizer
 from FastGaussianPuff import GaussianPuff as GP
 
 # set simulation parameters
@@ -28,18 +23,14 @@ wind_directions[30:60] -= 40*np.abs(np.sin(6*fake_times[30:60]))
 
 
 # emission source
-source_coordinates = [[488163.338444176, 4493892.53205817, 2.0]] # format is [[x0,y0,z0]] in [m]. needs to be nested list for compatability with multi source (coming soon)
+source_coordinates = [[0.0, 0.0, 2.5]] # format is [[x0,y0,z0]] in [m]. needs to be nested list for compatability with multi-source emissions
 emission_rate = [3.5] # emission rate for the single source above, [kg/hr]
 
 # sensors on the site. it is assumed that these encase the source coordinates.
-sensor_coordinates = [[488164.98285821447, 4493931.649887275, 2.4],
-    [488198.08502694493, 4493932.618594243, 2.4],
-    [488226.9012860443, 4493887.916890612, 2.4],
-    [488204.9825329503, 4493858.769131294, 2.4],
-    [488172.4989330686, 4493858.565324413, 2.4],
-    [488136.3904409793, 4493861.530987777, 2.4],
-    [488106.145508258, 4493896.167438727, 2.4],
-    [488133.15254321764, 4493932.355431944, 2.4]]
+theta = np.linspace(0, 2*np.pi, 8, endpoint=False)
+r = 30 + 15*np.random.rand(8)
+sensor_coordinates = [[r[i]*np.cos(theta[i]), r[i]*np.sin(theta[i]), 1 + 5*np.random.rand()] for i in range(8)]
+
 
 sp = GP(obs_dt=obs_dt, sim_dt=sim_dt, puff_dt=puff_dt,
                  simulation_start=start, simulation_end=end,
@@ -49,8 +40,11 @@ sp = GP(obs_dt=obs_dt, sim_dt=sim_dt, puff_dt=puff_dt,
                  quiet=True # change to false for progress information
 )
 
+print("STARTING SIMULATION")
 sp.simulate()
+print("SIMULATION FINISHED")
 
+print("MAKING PLOTS")
 #%% plotting
 t, n_sensors = np.shape(sp.ch4_obs) # (time, sensors)
 sensor_names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
@@ -78,4 +72,5 @@ for i in range(0,n_sensors):
     ax[row][col].set_title(sensor_names[i])
 
 
+print("CHECK FILE demo_sensors.png")
 fig.savefig("demo_sensors.png", format="png", dpi=500, bbox_inches="tight")
