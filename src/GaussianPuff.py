@@ -81,6 +81,9 @@ class GaussianPuff:
                if True, outputs extra information about the simulation and its progress.
         '''
 
+        if nx <= 1 or ny <= 1 or nz <= 1:
+            raise ValueError("ERROR: number of grid points in each direction (nx, ny, nz) must be greater than 1")
+
         self.obs_dt = obs_dt 
         self.sim_dt = sim_dt 
         self.puff_dt = puff_dt
