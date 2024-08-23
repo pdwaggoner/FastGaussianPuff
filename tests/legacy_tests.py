@@ -67,7 +67,7 @@ def runSensorTest(exp_start, t_0, t_end,
     print("Runtime: ", end-start)
 
     # compare to version generated using previous iteration of code
-    test_data_dir = "./test_data/"
+    test_data_dir = "./legacy_data/"
     exp_start = exp_start.tz_convert("America/Denver")
     exp_start = exp_start.tz_localize(None)
     exp_start = str(exp_start)
@@ -116,7 +116,7 @@ def runTest(exp_start, t_0, t_end,
     print("Runtime: ", end-start)
 
     # compare to ground truth, generated using original code
-    test_data_dir = "./test_data/"
+    test_data_dir = "./legacy_data/"
     exp_start = exp_start.tz_convert("America/Denver")
     exp_start = exp_start.tz_localize(None)
     exp_start = str(exp_start)
