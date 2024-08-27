@@ -15,24 +15,26 @@ wind_speeds = np.repeat(1.0, Nt)
 wind_directions = np.repeat(0.0, Nt)
 grid_coords = [-50, -50, 0, 50, 50, 20]
 
+params = {"obs_dt": obs_dt, "sim_dt": sim_dt, "puff_dt": puff_dt,
+          "simulation_start": start, "simulation_end": end,
+        "source_coordinates": source_coordinates, "emission_rates": emission_rate,
+        "wind_speeds": wind_speeds, "wind_directions": wind_directions}
 
 @pytest.mark.parametrize("nx, ny, nz", [(20, 32, 19), (20, 32, 20)])
 def test_good_grid_init(nx, ny, nz):
-    params = {"obs_dt": obs_dt, "sim_dt": sim_dt, "puff_dt": puff_dt,
-              "simulation_start": start, "simulation_end": end,
-            "source_coordinates": source_coordinates, "emission_rates": emission_rate,
-            "wind_speeds": wind_speeds, "wind_directions": wind_directions,
-            "grid_coordinates": grid_coords}
     
-    good_puff = GP(**params, nx=nx, ny=ny, nz=nz)
+    good_puff = GP(**params, grid_coordinates=grid_coords, nx=nx, ny=ny, nz=nz)
 
 @pytest.mark.parametrize("nx, ny, nz", [(0, 32, 19), (20, -5, 20),(20, 32, 1)])
 def test_bad_grid_init(nx, ny, nz):
+    with pytest.raises(ValueError):
+        bad_puff = GP(**params, grid_coordinates=grid_coords, nx=nx, ny=ny, nz=nz)
+
+def test_sensor_init():
     params = {"obs_dt": obs_dt, "sim_dt": sim_dt, "puff_dt": puff_dt,
               "simulation_start": start, "simulation_end": end,
             "source_coordinates": source_coordinates, "emission_rates": emission_rate,
             "wind_speeds": wind_speeds, "wind_directions": wind_directions,
             "grid_coordinates": grid_coords}
     
-    with pytest.raises(ValueError):
-        bad_puff = GP(**params, nx=nx, ny=ny, nz=nz)
+    puff = GP(**params, using_sensors=True, sensor_coordinates=[[1, 2, 3], [5,6,7]])
